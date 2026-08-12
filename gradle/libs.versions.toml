@@ -1,0 +1,65 @@
+[versions]
+# Kotlin 2.3.0 is the compiler the whole build is pinned to: the serialization
+# compiler plugin and the Kotlin/Native prebuilt toolchain must all match it.
+kotlin = "2.3.0"
+agp = "8.11.2"
+
+ktor = "3.4.0"
+coroutines = "1.10.2"
+serialization = "1.9.0"
+# 0.6.x keeps kotlinx.datetime.Instant as a real class. 0.7.x aliases it to
+# kotlin.time.Instant, which drags @ExperimentalTime into the public API of a
+# library other people compile against; not worth it for parsing one timestamp.
+datetime = "0.6.2"
+
+android-compileSdk = "36"
+android-minSdk = "24"
+# Pinned so a build on a fresh machine fails with "install build-tools 36.1.0"
+# instead of silently downloading one under a licence nobody accepted. CI
+# installs it explicitly; see .github/workflows/ci.yml.
+android-buildTools = "36.1.0"
+
+# 1.4.2 is the last 1.4.x. Staying on 1.4 rather than 1.5 keeps `minSdk 24`:
+# CameraX 1.5 raises its own floor and would drag the SDK's minimum up with it.
+camerax = "1.4.2"
+# Bundled face detector (`com.google.mlkit:face-detection`), not the Play
+# Services one. It adds ~3 MB to the APK and works with no Play Services and no
+# first-run model download — a liveness SDK that fails on a device without a
+# Google account is not shippable.
+mlkit-face = "16.1.7"
+
+androidx-core = "1.17.0"
+androidx-activity = "1.11.0"
+androidx-lifecycle = "2.9.4"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
+
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+
+# --- Android camera pipeline (androidMain of :facecheck-kmp) ------------------
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "mlkit-face" }
+
+# --- samples/android-quickstart ----------------------------------------------
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "androidx-activity" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "androidx-lifecycle" }
+
+[plugins]
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+androidLibrary = { id = "com.android.library", version.ref = "agp" }
+androidApplication = { id = "com.android.application", version.ref = "agp" }

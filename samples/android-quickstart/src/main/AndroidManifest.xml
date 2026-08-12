@@ -1,0 +1,25 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      La librería ya declara android.permission.CAMERA y los uses-feature; el
+      manifest merger los trae solo. Pedirle el permiso al usuario sigue siendo
+      trabajo de la app: ver VerifyActivity.
+    -->
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FaceCheckSample">
+        <activity
+            android:name=".VerifyActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

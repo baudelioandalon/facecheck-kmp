@@ -1,0 +1,214 @@
+name: Release
+
+# Compila, firma y sube a Maven Central.
+#
+# CUÁNDO PUBLICA: cuando `VERSION_NAME` de gradle.properties todavía no existe
+# en Central. Ese es el disparador real, y no "cada push", porque una versión
+# publicada en Central es PERMANENTE: no se puede borrar ni reemplazar, y subir
+# 0.1.0 dos veces no sobrescribe nada, falla. Con esta regla el flujo es el que
+# uno espera —subes el cambio con la versión nueva y se publica solo— y un
+# commit de documentación no truena el pipeline ni republica nada.
+#
+# Si empujas código sin mover VERSION_NAME, el job termina en verde diciendo
+# que esa versión ya está publicada. Para publicar, sube la versión.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Publicar aunque el chequeo diga que la versión ya existe'
+        type: boolean
+        default: false
+
+concurrency:
+  # Sin cancel-in-progress: cancelar a media subida deja un repositorio de
+  # staging abierto en Sonatype que hay que limpiar a mano.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+  GROUP_ID: org.borealnetwork
+  ARTIFACT_ID: facecheck-kmp
+
+jobs:
+  # -------------------------------------------------------------------------
+  # ¿Hay algo que publicar?
+  # -------------------------------------------------------------------------
+  # Se le pregunta a Maven Central, no al historial de git. Es la única fuente
+  # que sabe la verdad, y hace el workflow idempotente: repetirlo tras un fallo
+  # de red no intenta republicar lo que ya subió.
+  gate:
+    name: Revisar la version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        run: |
+          set -euo pipefail
+          version="$(grep -E '^VERSION_NAME=' gradle.properties | cut -d= -f2 | tr -d ' \r')"
+          [[ -n "$version" ]] || { echo "::error::gradle.properties no define VERSION_NAME"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version declarada: $version"
+
+          if [[ "$version" == *-SNAPSHOT ]]; then
+            echo "::notice::$version es un SNAPSHOT; Central solo recibe versiones finales."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ inputs.force }}" == "true" ]]; then
+            echo "::warning::Se fuerza la publicacion de $version."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # El .pom es el archivo que Central siempre publica para cualquier
+          # artefacto; un 200 significa que esa version ya es inmutable.
+          path="${GROUP_ID//.//}/$ARTIFACT_ID/$version/$ARTIFACT_ID-$version.pom"
+          code="$(curl -s -o /dev/null -w '%{http_code}' "https://repo1.maven.org/maven2/$path" || echo 000)"
+
+          if [[ "$code" == "200" ]]; then
+            echo "::notice::$ARTIFACT_ID $version ya esta en Maven Central. Sube VERSION_NAME para publicar una version nueva."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$code" == "404" ]]; then
+            echo "$version no existe en Central todavia. Se publica."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            # Ni publicar a ciegas ni fallar en silencio: si Central no
+            # contesta, la respuesta honesta es detenerse.
+            echo "::error::Central respondio HTTP $code al consultar $path. No se publica sin saber si la version ya existe."
+            exit 1
+          fi
+
+  # -------------------------------------------------------------------------
+  # Publicar
+  # -------------------------------------------------------------------------
+  # macOS y no Linux: los targets de iOS de Kotlin/Native solo se compilan con
+  # el toolchain de Apple. En Linux, `ignoreDisabledTargets` los saltaría y se
+  # publicaria una version sin iOS —- que en Central ya no se puede corregir.
+  publish:
+    name: Publicar ${{ needs.gate.outputs.version }} en Maven Central
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: macos-latest
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configurar el SDK de Android
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar platform 36 y build-tools 36.1.0
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
+
+      # Las pruebas ANTES de firmar nada. Publicar es irreversible; correr la
+      # suite después de subir no sirve de nada.
+      - name: Probar
+        run: ./gradlew test --stacktrace
+
+      - name: Probar en el simulador de iOS
+        run: ./gradlew :facecheck-kmp:iosSimulatorArm64Test --stacktrace
+
+      # Ensayo completo del POM y de la firma contra un repositorio local. Si
+      # la llave GPG está mal, falla aquí y no a mitad de la subida.
+      - name: Ensayo de publicacion en local
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew publishAllPublicationsToLocalStagingRepository --stacktrace
+
+      - name: Verificar que todo quedo firmado
+        run: |
+          set -euo pipefail
+          # Un .asc por artefacto. Central rechaza el deployment si falta uno,
+          # pero lo hace después de subir; verificarlo aquí es más barato.
+          firmas="$(find . -path '*/staging-repo/*' -name '*.asc' | wc -l | tr -d ' ')"
+          echo "$firmas firmas generadas"
+          [[ "$firmas" -gt 0 ]] || { echo "::error::No se firmo ningun artefacto. Revisa el secreto SIGNING_KEY."; exit 1; }
+
+      - name: Subir a Central
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: ./gradlew publishAllPublicationsToMavenCentralRepository --stacktrace
+
+      # El paso que falta en todos los tutoriales. `publish...ToMavenCentral`
+      # deja el repositorio de staging ABIERTO: los archivos están en Sonatype
+      # pero el deployment ni siquiera aparece en el portal, y da la impresión
+      # de que el build subió a la nada. Cerrarlo es lo que lo convierte en un
+      # deployment de verdad.
+      - name: Cerrar el repositorio de staging
+        id: close
+        env:
+          USER: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          PASS: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          # `automatic` publica sin intervención. `user_managed` deja el botón
+          # Publish del portal como último filtro humano.
+          TIPO: ${{ vars.MAVEN_PUBLISHING_TYPE || 'automatic' }}
+        run: |
+          set -euo pipefail
+          url="https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/$GROUP_ID?publishing_type=$TIPO"
+          echo "Cerrando el staging como '$TIPO'"
+          # -f para que un 4xx sea un fallo del job: sin esto, curl imprime el
+          # error de Sonatype y sale con 0, y el workflow termina en verde con
+          # el deployment atorado.
+          respuesta="$(curl -sS -f -X POST -u "$USER:$PASS" "$url")" || {
+            echo "::error::Sonatype rechazo el cierre del staging."
+            exit 1
+          }
+          echo "$respuesta"
+
+      - name: Resumen
+        run: |
+          {
+            echo "### $ARTIFACT_ID ${{ needs.gate.outputs.version }}"
+            echo
+            if [[ "${{ vars.MAVEN_PUBLISHING_TYPE || 'automatic' }}" == "automatic" ]]; then
+              echo "Publicado en Maven Central. Tarda entre 10 y 30 minutos en aparecer en el buscador."
+            else
+              echo "Subido y cerrado. Falta presionar **Publish** en <https://central.sonatype.com/publishing/deployments>."
+            fi
+            echo
+            echo '```kotlin'
+            echo "implementation(\"$GROUP_ID:$ARTIFACT_ID:${{ needs.gate.outputs.version }}\")"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Deja constancia en verde de por qué no se publicó, en lugar de un workflow
+  # que aparenta haber corrido sin hacer nada.
+  sin-cambios:
+    name: Sin version nueva
+    needs: gate
+    if: needs.gate.outputs.publish != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          {
+            echo "### Nada que publicar"
+            echo
+            echo "\`VERSION_NAME=${{ needs.gate.outputs.version }}\` ya existe en Maven Central, o es un SNAPSHOT."
+            echo
+            echo "Una version de Central es permanente y no se puede reemplazar."
+            echo "Para publicar, sube \`VERSION_NAME\` en \`gradle.properties\`."
+          } >> "$GITHUB_STEP_SUMMARY"

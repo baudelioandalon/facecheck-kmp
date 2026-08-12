@@ -1,0 +1,26 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Declared by the SDK rather than left to the integrator: the camera is not
+      optional here, and an app that forgets this line fails at runtime with a
+      SecurityException that reads like a CameraX bug. Requesting it from the
+      user is still the host app's job — see the demo.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      required=false on purpose. A tablet with only a rear camera can still run a
+      liveness session; making the front camera required would drop the app off
+      those devices in the Play Store listing rather than degrade gracefully.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.front"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+</manifest>

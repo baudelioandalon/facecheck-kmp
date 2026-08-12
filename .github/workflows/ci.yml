@@ -1,0 +1,108 @@
+name: CI
+
+# Compila y prueba. No publica: subir a Maven Central es una acción manual
+# desde una máquina que tenga la llave GPG y las credenciales del portal.
+# Ver la sección "Publicar" del README.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  # Android + código común. Los targets de iOS no se pueden compilar en Linux;
+  # `kotlin.native.ignoreDisabledTargets=true` hace que se salten en vez de
+  # tronar, y del job `ios` se encarga un runner de macOS.
+  jvm:
+    name: Android y commonMain (JDK 21)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configurar el SDK de Android
+        uses: android-actions/setup-android@v3
+
+      # Las dos versiones están fijadas en gradle/libs.versions.toml a
+      # propósito. Instalarlas aquí explícitamente es lo que evita que el build
+      # se baje solo un build-tools bajo una licencia que nadie aceptó.
+      - name: Instalar platform 36 y build-tools 36.1.0
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Compilar
+        run: ./gradlew build -x test --stacktrace
+
+      - name: Probar
+        run: ./gradlew test --stacktrace
+
+      - name: Publicar a un repositorio local (ensayo del POM, no sube nada)
+        run: ./gradlew publishAllPublicationsToLocalStagingRepository --stacktrace
+
+      - name: Guardar reportes de prueba
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-jvm
+          path: '**/build/reports/tests/**'
+          if-no-files-found: ignore
+
+  # iOS necesita macOS: el toolchain de Kotlin/Native para targets de Apple solo
+  # existe ahí. Compila el framework y corre commonTest en el simulador, que es
+  # la única forma de que las pruebas cubran de verdad las dos plataformas.
+  ios:
+    name: iOS (JDK 21, macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configurar el SDK de Android
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar platform 36 y build-tools 36.1.0
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Enlazar el framework FaceCheckSDK
+        run: |
+          ./gradlew :facecheck-kmp:linkDebugFrameworkIosSimulatorArm64 \
+                    :facecheck-kmp:linkReleaseFrameworkIosArm64 --stacktrace
+
+      - name: Probar en el simulador
+        run: ./gradlew :facecheck-kmp:iosSimulatorArm64Test --stacktrace
+
+      - name: Guardar reportes de prueba
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-ios
+          path: '**/build/reports/tests/**'
+          if-no-files-found: ignore

@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Kotlin
+.kotlin/
+kotlin-js-store/
+
+# Machine-local: apunta al SDK de Android de cada quien.
+local.properties
+
+# Credenciales de publicación. Nunca deben entrar aquí: van en
+# ~/.gradle/gradle.properties o en variables ORG_GRADLE_PROJECT_*.
+gradle-local.properties
+*.gpg
+*.asc
+*.jks
+*.keystore
+
+# Xcode / Kotlin-Native
+*.xcframework/
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.fleet/
+.vscode/
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Credenciales. Estas reglas las heredaba el monorepo privado; como repositorio
+# independiente hay que declararlas aqui o dejan de existir.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+google-services.json
+keystore.properties
+secrets.properties
+serviceAccountKey.json
