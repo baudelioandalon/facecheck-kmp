@@ -128,6 +128,21 @@ jobs:
       - name: Probar en el simulador de iOS
         run: ./gradlew :facecheck-kmp:iosSimulatorArm64Test --stacktrace
 
+      # Un secreto que no existia cuando arranco el job llega como cadena vacia,
+      # no como error. Sin esta comprobacion el sintoma aparece tres pasos
+      # despues, como "0 firmas generadas", y apunta al find en vez de apuntar
+      # al secreto que falta.
+      - name: Comprobar que la llave de firma llego
+        env:
+          KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "${KEY:-}" ]] || {
+            echo "::error::secrets.SIGNING_KEY llego vacio. Si acabas de crear el repo, los secretos se guardaron despues de que arrancara este job: relanza el workflow."
+            exit 1
+          }
+          echo "SIGNING_KEY presente (${#KEY} bytes)"
+
       # Ensayo completo del POM y de la firma contra un repositorio local. Si
       # la llave GPG está mal, falla aquí y no a mitad de la subida.
       - name: Ensayo de publicacion en local
