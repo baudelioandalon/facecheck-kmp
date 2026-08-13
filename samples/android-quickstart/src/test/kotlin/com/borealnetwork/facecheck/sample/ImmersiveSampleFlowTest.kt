@@ -55,4 +55,9 @@ class ImmersiveSampleFlowTest {
         assertEquals("TEST", SampleEnvironment.fromApiKey("lk_test_anything").label)
         assertEquals("PRODUCTION", SampleEnvironment.fromApiKey("lk_live_anything").label)
     }
+
+    @Test
+    fun `retry result hides the finalizing loading layer`() {
+        assertEquals(false, EnrollmentRetryPresentation.from(EnrollmentAttempt.first).showsLoading)
+    }
 }

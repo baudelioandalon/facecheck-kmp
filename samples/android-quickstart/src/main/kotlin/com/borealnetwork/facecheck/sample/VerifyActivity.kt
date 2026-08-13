@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -299,6 +301,7 @@ class VerifyActivity : ComponentActivity() {
         controller.attachPreview(preview)
         camera = controller
         val machine = newChallengeMachine(screen.operation)
+        val challengeFeedback = ChallengeCompletionFeedback()
         challengeJob = observeChallenge(
             machine = machine,
             sessionId = sessionId,
@@ -309,6 +312,7 @@ class VerifyActivity : ComponentActivity() {
             progress = progress,
             cancelButton = cancelButton,
             loading = loading,
+            challengeFeedback = challengeFeedback,
         )
         captureJob = lifecycleScope.launch {
             var enrollmentFailed = false
@@ -356,6 +360,7 @@ class VerifyActivity : ComponentActivity() {
                         screen = screen,
                         attempt = enrollmentAttempt,
                         cancelButton = cancelButton,
+                        loading = loading,
                     )
                     screen.operation == SampleOperation.ENROLL && outcome?.succeeded == true ->
                         renderEnrollmentComplete(frame, loading, screen.email)
@@ -375,6 +380,7 @@ class VerifyActivity : ComponentActivity() {
         progress: ProgressBar,
         cancelButton: Button,
         loading: View,
+        challengeFeedback: ChallengeCompletionFeedback,
     ): Job = lifecycleScope.launch {
         machine.state.collect { state ->
             if (sessionId == activeCaptureId) {
@@ -393,6 +399,10 @@ class VerifyActivity : ComponentActivity() {
                 if (!presentation.isFinalizing) progress.progress = (presentation.ringProgress * 100).toInt()
                 loading.visibility = if (presentation.isFinalizing) View.VISIBLE else View.GONE
                 cancelButton.visibility = if (presentation.isFinalizing) View.INVISIBLE else View.VISIBLE
+                if (challengeFeedback.consume(state)) {
+                    overlay.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    overlay.playSoundEffect(SoundEffectConstants.CLICK)
+                }
             }
         }
     }
@@ -447,9 +457,12 @@ class VerifyActivity : ComponentActivity() {
         screen: ImmersiveScreen.Capture,
         attempt: EnrollmentAttempt,
         cancelButton: Button,
+        loading: View,
     ) {
-        val retry = attempt.retry()
+        val presentation = EnrollmentRetryPresentation.from(attempt)
+        val retry = presentation.nextAttempt
         cancelButton.visibility = View.INVISIBLE
+        loading.visibility = if (presentation.showsLoading) View.VISIBLE else View.GONE
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 40, 48, 48)
