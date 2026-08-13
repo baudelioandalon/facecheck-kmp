@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
 }
+
+val localProperties = Properties().also { properties ->
+    val localFile = rootProject.file("local.properties")
+    if (localFile.isFile) localFile.inputStream().use(properties::load)
+}
+val facecheckApiKey = localProperties.getProperty("FACECHECK_API_KEY").orEmpty()
 
 android {
     namespace = "com.borealnetwork.facecheck.sample"
@@ -14,6 +22,11 @@ android {
         targetSdk = libs.versions.android.compileSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "FACECHECK_API_KEY", "\"$facecheckApiKey\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -42,4 +55,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+
+    testImplementation(kotlin("test-junit"))
 }
