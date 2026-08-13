@@ -91,8 +91,10 @@ justamente para que este fragmento no pueda quedarse mintiendo.
 
 El sample completo muestra un flujo de producto: primero explica y solicita
 cámara, imágenes y ubicación; después separa la selección de la persona de la
-captura. Durante la sesión dibuja un marco oval, la instrucción de vida y el
-progreso alrededor del rostro. Para verificar, la lista contiene únicamente
+captura. Durante el enrolamiento guía tres movimientos (izquierda, derecha y
+frente), muestra el progreso alrededor del rostro y en una barra inferior, y
+permite hasta tres intentos sin abandonar la cámara. Tras los pasos, presenta
+una pantalla de carga antes de guardar el enrolamiento. Para verificar, la lista contiene únicamente
 correos enrolados con ese sample en ese dispositivo; no consulta el directorio
 del dueño de la app desde una llave incluida en el APK. Si tu producto necesita
 esa lista, sírvela desde tu backend autenticado.

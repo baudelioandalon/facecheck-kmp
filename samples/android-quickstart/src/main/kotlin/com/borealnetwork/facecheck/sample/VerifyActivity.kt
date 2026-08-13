@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.sample
 
 import android.Manifest
+import android.content.res.ColorStateList
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,6 +14,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
@@ -81,6 +83,7 @@ class VerifyActivity : ComponentActivity() {
                 FaceCheckConfig(
                     apiKey = BuildConfig.FACECHECK_API_KEY,
                     baseUrl = BASE_URL,
+                    livenessTimeoutMs = ENROLLMENT_LIVENESS_TIMEOUT_MS,
                 ),
             )
             configured = true
@@ -204,7 +207,10 @@ class VerifyActivity : ComponentActivity() {
         installColumn(column)
     }
 
-    private fun renderCapture(screen: ImmersiveScreen.Capture) {
+    private fun renderCapture(
+        screen: ImmersiveScreen.Capture,
+        enrollmentAttempt: EnrollmentAttempt = EnrollmentAttempt.first,
+    ) {
         blockingMessage()?.let {
             renderPermissionGate(it)
             return
@@ -218,8 +224,9 @@ class VerifyActivity : ComponentActivity() {
         frame.addView(preview, matchParent())
         frame.addView(overlay, matchParent())
 
+        val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
         frame.addView(
-            secondaryButton("Cancelar") { cancelCapture(sessionId) },
+            cancelButton,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
                 topMargin = 36
                 marginEnd = 28
@@ -235,26 +242,57 @@ class VerifyActivity : ComponentActivity() {
             setTextColor(Color.rgb(155, 237, 203))
             textSize = 14f
         }
+        val attempt = TextView(this).apply {
+            text = enrollmentAttempt.label
+            setTextColor(Color.argb(210, 255, 255, 255))
+            textSize = 13f
+            visibility = if (screen.operation == SampleOperation.ENROLL) View.VISIBLE else View.GONE
+            setPadding(0, 8, 0, 0)
+        }
         val instruction = TextView(this).apply {
             setTextColor(Color.WHITE)
             textSize = 25f
             setPadding(0, 8, 0, 0)
         }
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = ColorStateList.valueOf(Color.rgb(117, 224, 184))
+            progressBackgroundTintList = ColorStateList.valueOf(Color.rgb(52, 72, 80))
+            setPadding(0, 24, 0, 0)
+        }
         guidance.addView(step)
+        guidance.addView(attempt)
         guidance.addView(instruction)
+        guidance.addView(progress, LinearLayout.LayoutParams(MATCH, 12))
         frame.addView(
             guidance,
             FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM),
         )
+
+        val loading = loadingOverlay(screen.operation)
+        frame.addView(loading, matchParent())
         install(frame)
 
         val controller = AndroidCameraController(host = CameraHost(this))
         controller.attachPreview(preview)
         camera = controller
-        val machine: ChallengeMachine = FaceCheck.newChallengeMachine()
-        challengeJob = observeChallenge(machine, sessionId, overlay, step, instruction)
+        val machine = newChallengeMachine(screen.operation)
+        challengeJob = observeChallenge(
+            machine = machine,
+            sessionId = sessionId,
+            operation = screen.operation,
+            overlay = overlay,
+            step = step,
+            instruction = instruction,
+            progress = progress,
+            cancelButton = cancelButton,
+            loading = loading,
+        )
         captureJob = lifecycleScope.launch {
-            val outcome = try {
+            var enrollmentFailed = false
+            var outcome: ImmersiveScreen.Outcome? = null
+            try {
                 val succeeded = when (screen.operation) {
                     SampleOperation.ENROLL -> FaceCheck.enroll(
                         email = screen.email,
@@ -267,39 +305,73 @@ class VerifyActivity : ComponentActivity() {
                         machine = machine,
                     ).verified
                 }
-                if (succeeded && screen.operation == SampleOperation.ENROLL) rememberSubject(screen.email)
-                ImmersiveScreen.Outcome(
-                    operation = screen.operation,
-                    succeeded = succeeded,
-                    message = if (succeeded) successMessage(screen.operation) else failureMessage(screen.operation),
-                )
+                if (succeeded && screen.operation == SampleOperation.ENROLL) {
+                    rememberSubject(screen.email)
+                }
+                if (!succeeded && screen.operation == SampleOperation.ENROLL) {
+                    enrollmentFailed = true
+                } else {
+                    outcome = ImmersiveScreen.Outcome(
+                        operation = screen.operation,
+                        succeeded = succeeded,
+                        message = if (succeeded) successMessage(screen.operation) else failureMessage(screen.operation),
+                    )
+                }
             } catch (error: FaceCheckException) {
-                ImmersiveScreen.Outcome(screen.operation, false, "${error.code}: ${error.message}")
+                if (screen.operation == SampleOperation.ENROLL) enrollmentFailed = true
+                else outcome = ImmersiveScreen.Outcome(screen.operation, false, "${error.code}: ${error.message}")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } finally {
                 if (sessionId == activeCaptureId) {
-                    releaseCamera()
+                    if (!enrollmentFailed) releaseCamera()
                     busy = false
                 }
             }
-            if (sessionId == activeCaptureId) renderOutcome(outcome)
+            if (sessionId == activeCaptureId) {
+                when {
+                    enrollmentFailed -> renderEnrollmentRetry(
+                        frame = frame,
+                        screen = screen,
+                        attempt = enrollmentAttempt,
+                        cancelButton = cancelButton,
+                    )
+                    screen.operation == SampleOperation.ENROLL && outcome?.succeeded == true ->
+                        renderEnrollmentComplete(screen.email)
+                    outcome != null -> renderOutcome(checkNotNull(outcome))
+                }
+            }
         }
     }
 
     private fun observeChallenge(
         machine: ChallengeMachine,
         sessionId: Long,
+        operation: SampleOperation,
         overlay: FaceGuideOverlay,
         step: TextView,
         instruction: TextView,
+        progress: ProgressBar,
+        cancelButton: Button,
+        loading: View,
     ): Job = lifecycleScope.launch {
         machine.state.collect { state ->
             if (sessionId == activeCaptureId) {
-                val presentation = CapturePresentation.from(state)
+                val presentation = CapturePresentation.from(
+                    state = state,
+                    finalizingInstruction = if (operation == SampleOperation.ENROLL) {
+                        "Guardando enrolamiento…"
+                    } else {
+                        "Verificando identidad…"
+                    },
+                )
                 overlay.render(presentation)
                 step.text = presentation.stepLabel
                 instruction.text = presentation.instruction
+                progress.isIndeterminate = presentation.isFinalizing
+                if (!presentation.isFinalizing) progress.progress = (presentation.ringProgress * 100).toInt()
+                loading.visibility = if (presentation.isFinalizing) View.VISIBLE else View.GONE
+                cancelButton.visibility = if (presentation.isFinalizing) View.INVISIBLE else View.VISIBLE
             }
         }
     }
@@ -311,6 +383,114 @@ class VerifyActivity : ComponentActivity() {
         releaseCamera()
         busy = false
         renderHome()
+    }
+
+    private fun newChallengeMachine(operation: SampleOperation): ChallengeMachine = when (operation) {
+        SampleOperation.ENROLL -> ChallengeMachine(
+            challenges = EnrollmentSessionPolicy.challenges,
+            config = EnrollmentSessionPolicy.livenessConfig,
+        )
+        SampleOperation.VERIFY -> FaceCheck.newChallengeMachine()
+    }
+
+    private fun loadingOverlay(operation: SampleOperation): View = LinearLayout(this).apply {
+        val isEnrollment = operation == SampleOperation.ENROLL
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(72, 72, 72, 72)
+        setBackgroundColor(Color.argb(235, 3, 10, 19))
+        visibility = View.GONE
+        addView(ProgressBar(this@VerifyActivity))
+        addSpace(this, 24)
+        addView(TextView(this@VerifyActivity).apply {
+            text = if (isEnrollment) "Guardando enrolamiento…" else "Verificando identidad…"
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+        })
+        addView(TextView(this@VerifyActivity).apply {
+            text = if (isEnrollment) {
+                "Tus tres pasos se completaron. Protegemos el registro antes de continuar."
+            } else {
+                "Completamos los pasos. Estamos protegiendo la verificación antes de continuar."
+            }
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(190, 211, 219))
+            setPadding(0, 16, 0, 0)
+        })
+    }
+
+    private fun renderEnrollmentRetry(
+        frame: FrameLayout,
+        screen: ImmersiveScreen.Capture,
+        attempt: EnrollmentAttempt,
+        cancelButton: Button,
+    ) {
+        val retry = attempt.retry()
+        cancelButton.visibility = View.INVISIBLE
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 40, 48, 48)
+            setBackgroundColor(Color.rgb(18, 27, 41))
+        }
+        card.addView(TextView(this).apply {
+            text = if (retry == null) "Se agotaron los intentos" else "Volvamos a intentarlo"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+        })
+        card.addView(TextView(this).apply {
+            text = "No pudimos completar el enrolamiento. Asegúrate de que solo haya un rostro dentro del marco y completa los tres movimientos."
+            textSize = 16f
+            setTextColor(Color.rgb(255, 188, 184))
+            setPadding(0, 14, 0, 0)
+        })
+        card.addView(TextView(this).apply {
+            text = attempt.label
+            textSize = 14f
+            setTextColor(Color.rgb(190, 211, 219))
+            setPadding(0, 16, 0, 0)
+        })
+        retry?.let { next ->
+            card.addView(primaryButton("Volver a intentar") {
+                releaseCamera()
+                renderCapture(screen, next)
+            }, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 24 })
+        }
+        card.addView(secondaryButton("Aceptar") {
+            activeCaptureId += 1
+            releaseCamera()
+            renderHome()
+        }, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 })
+        frame.addView(
+            card,
+            FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM),
+        )
+    }
+
+    private fun renderEnrollmentComplete(email: String) {
+        currentScreen = ImmersiveScreen.Outcome(
+            operation = SampleOperation.ENROLL,
+            succeeded = true,
+            message = successMessage(SampleOperation.ENROLL),
+        )
+        val column = screenColumn()
+        column.gravity = Gravity.CENTER_HORIZONTAL
+        addSpace(column, 72)
+        column.addView(TextView(this).apply {
+            text = "✓"
+            textSize = 80f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(24, 142, 92))
+        }, fullWidth())
+        addSpace(column, 12)
+        column.addView(title("Enrolamiento completado"))
+        column.addView(body("El rostro de $email quedó listo para una verificación desde este dispositivo."))
+        addSpace(column, 32)
+        column.addView(primaryButton("Verificar esta identidad") { openSubjectSetup(SampleOperation.VERIFY) })
+        addSpace(column, 12)
+        column.addView(secondaryButton("Volver al inicio") { renderHome() })
+        installColumn(column)
     }
 
     private fun renderOutcome(screen: ImmersiveScreen.Outcome) {
@@ -442,6 +622,7 @@ class VerifyActivity : ComponentActivity() {
     private companion object {
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         const val BASE_URL = "https://us-central1-facecheck-mx.cloudfunctions.net"
+        const val ENROLLMENT_LIVENESS_TIMEOUT_MS = 120_000L
         const val PREFERENCES = "facecheck_sample"
         const val SUBJECTS_KEY = "enrolled_subjects"
     }

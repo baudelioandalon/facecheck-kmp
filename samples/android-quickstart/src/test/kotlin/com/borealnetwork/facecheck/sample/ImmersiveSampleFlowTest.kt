@@ -1,7 +1,9 @@
 package com.borealnetwork.facecheck.sample
 
+import com.borealnetwork.facecheck.liveness.Challenge
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ImmersiveSampleFlowTest {
 
@@ -30,5 +32,21 @@ class ImmersiveSampleFlowTest {
                 successfulEnrollment = " NEW@example.com ",
             ),
         )
+    }
+
+    @Test
+    fun `enrollment always asks left then right then front`() {
+        assertEquals(
+            listOf(Challenge.TurnLeft, Challenge.TurnRight, Challenge.Center),
+            EnrollmentSessionPolicy.challenges,
+        )
+    }
+
+    @Test
+    fun `enrollment allows two retries after the first attempt`() {
+        assertEquals("Intento 1 de 3", EnrollmentAttempt.first.label)
+        assertEquals("Intento 2 de 3", EnrollmentAttempt.first.retry()?.label)
+        assertEquals("Intento 3 de 3", EnrollmentAttempt.first.retry()?.retry()?.label)
+        assertNull(EnrollmentAttempt.first.retry()?.retry()?.retry())
     }
 }

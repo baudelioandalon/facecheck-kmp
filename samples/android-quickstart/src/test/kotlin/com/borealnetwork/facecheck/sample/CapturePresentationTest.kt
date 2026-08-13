@@ -5,6 +5,7 @@ import com.borealnetwork.facecheck.liveness.ChallengePhase
 import com.borealnetwork.facecheck.liveness.LivenessState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class CapturePresentationTest {
 
@@ -20,7 +21,7 @@ class CapturePresentationTest {
         )
 
         assertEquals("Gira la cabeza a la izquierda", presentation.instruction)
-        assertEquals("Reto 2 de 3", presentation.stepLabel)
+        assertEquals("Paso 2 de 3", presentation.stepLabel)
         assertEquals(1f / 3f, presentation.ringProgress)
     }
 
@@ -30,5 +31,14 @@ class CapturePresentationTest {
             1f,
             CapturePresentation(instruction = "Listo", stepLabel = "Completado", progress = 2f).ringProgress,
         )
+    }
+
+    @Test
+    fun `capture state presents a loading handoff after the three steps`() {
+        val presentation = CapturePresentation.from(LivenessState.Capturing)
+
+        assertEquals("Guardando enrolamiento…", presentation.instruction)
+        assertEquals("Pasos completados", presentation.stepLabel)
+        assertTrue(presentation.isFinalizing)
     }
 }
