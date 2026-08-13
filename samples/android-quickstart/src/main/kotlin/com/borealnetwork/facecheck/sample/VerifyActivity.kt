@@ -628,13 +628,15 @@ class VerifyActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
 
-    private fun knownSubjects(): List<String> = LocalSubjectDirectory.normalizedDistinct(
-        getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getString(SUBJECTS_KEY, "")
-            .orEmpty()
-            .lineSequence()
-            .toList(),
-    )
+    private fun knownSubjects(): List<String> {
+        val preferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        return LocalSubjectDirectory.readAndMigrate(
+            readStoredSubjects = { preferences.getString(SUBJECTS_KEY, "").orEmpty() },
+            persistSubjects = { normalizedSubjects ->
+                preferences.edit().putString(SUBJECTS_KEY, normalizedSubjects).apply()
+            },
+        )
+    }
 
     private fun rememberSubject(subjectId: String) {
         val remembered = LocalSubjectDirectory.remember(knownSubjects(), subjectId)

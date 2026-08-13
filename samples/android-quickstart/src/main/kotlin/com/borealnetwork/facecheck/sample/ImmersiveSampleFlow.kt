@@ -44,6 +44,17 @@ internal object ImmersiveSampleFlow {
 }
 
 internal object LocalSubjectDirectory {
+    fun readAndMigrate(
+        readStoredSubjects: () -> String,
+        persistSubjects: (String) -> Unit,
+    ): List<String> {
+        val storedSubjects = readStoredSubjects()
+        val normalizedSubjects = normalizedDistinct(storedSubjects.lineSequence().toList())
+        val persistedSubjects = normalizedSubjects.joinToString("\n")
+        if (storedSubjects != persistedSubjects) persistSubjects(persistedSubjects)
+        return normalizedSubjects
+    }
+
     fun remember(existing: List<String>, successfulEnrollment: String): List<String> {
         val normalized = successfulEnrollment.normalizedSubjectId() ?: return normalizedDistinct(existing)
         return normalizedDistinct(listOf(normalized) + existing)

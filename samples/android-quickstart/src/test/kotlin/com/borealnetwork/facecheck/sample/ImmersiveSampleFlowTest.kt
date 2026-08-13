@@ -53,6 +53,19 @@ class ImmersiveSampleFlowTest {
     }
 
     @Test
+    fun `reading legacy stored subjects persists only valid subject IDs`() {
+        var storedSubjects = "legacy@example.invalid\nPerson_01\nPerson_01"
+
+        val knownSubjects = LocalSubjectDirectory.readAndMigrate(
+            readStoredSubjects = { storedSubjects },
+            persistSubjects = { storedSubjects = it },
+        )
+
+        assertEquals(listOf("Person_01"), knownSubjects)
+        assertEquals("Person_01", storedSubjects)
+    }
+
+    @Test
     fun `enrollment always asks left then right then front`() {
         assertEquals(
             listOf(Challenge.TurnLeft, Challenge.TurnRight, Challenge.Center),
