@@ -8,29 +8,47 @@ import kotlin.test.assertNull
 class ImmersiveSampleFlowTest {
 
     @Test
-    fun `valid trimmed email starts enrollment capture`() {
+    fun `generated subject ID starts enrollment capture`() {
         assertEquals(
-            ImmersiveScreen.Capture(SampleOperation.ENROLL, "ana@example.com"),
-            ImmersiveSampleFlow.begin(SampleOperation.ENROLL, "  ana@example.com  "),
-        )
-    }
-
-    @Test
-    fun `invalid email stays in subject setup with guidance`() {
-        assertEquals(
-            ImmersiveScreen.SubjectSetup(SampleOperation.VERIFY, "Escribe un correo válido."),
-            ImmersiveSampleFlow.begin(SampleOperation.VERIFY, "sin-correo"),
-        )
-    }
-
-    @Test
-    fun `remembered subjects are normalized deduplicated and newest first`() {
-        assertEquals(
-            listOf("new@example.com", "old@example.com"),
-            LocalSubjectDirectory.remember(
-                existing = listOf("old@example.com", "new@example.com"),
-                successfulEnrollment = " NEW@example.com ",
+            ImmersiveScreen.Capture(
+                SampleOperation.ENROLL,
+                "sub_ABCDEFGHJK_abcdefghijklmnopqrstuv",
             ),
+            ImmersiveSampleFlow.begin(
+                SampleOperation.ENROLL,
+                "  sub_ABCDEFGHJK_abcdefghijklmnopqrstuv  ",
+            ),
+        )
+    }
+
+    @Test
+    fun `invalid subject ID stays in setup with guidance`() {
+        assertEquals(
+            ImmersiveScreen.SubjectSetup(
+                operation = SampleOperation.VERIFY,
+                validationMessage = "Escribe un ID de persona válido.",
+                subjectId = "sin espacios",
+            ),
+            ImmersiveSampleFlow.begin(SampleOperation.VERIFY, "sin espacios"),
+        )
+    }
+
+    @Test
+    fun `successful enrollment directory keeps subject IDs distinct and newest first`() {
+        assertEquals(
+            listOf("Person_02", "Person_01"),
+            LocalSubjectDirectory.remember(
+                existing = listOf("Person_01", "Person_02"),
+                successfulEnrollment = " Person_02 ",
+            ),
+        )
+    }
+
+    @Test
+    fun `verification directory excludes values that are not subject IDs`() {
+        assertEquals(
+            listOf("Person_01"),
+            LocalSubjectDirectory.normalizedDistinct(listOf("Person_01", "valor no válido")),
         )
     }
 

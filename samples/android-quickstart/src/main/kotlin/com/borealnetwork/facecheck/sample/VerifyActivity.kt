@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.borealnetwork.facecheck.FaceCheck
 import com.borealnetwork.facecheck.FaceCheckConfig
+import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.camera.AndroidCameraController
 import com.borealnetwork.facecheck.camera.CameraHost
 import com.borealnetwork.facecheck.liveness.ChallengeMachine
@@ -99,7 +100,12 @@ class VerifyActivity : ComponentActivity() {
         when (val screen = currentScreen) {
             ImmersiveScreen.Home -> renderHome()
             is ImmersiveScreen.PermissionGate -> renderPermissionGate(screen.message)
-            is ImmersiveScreen.SubjectSetup -> renderSubjectSetup(screen.operation, screen.validationMessage)
+            is ImmersiveScreen.SubjectSetup -> renderSubjectSetup(
+                operation = screen.operation,
+                validationMessage = screen.validationMessage,
+                subjectId = screen.subjectId,
+            )
+            ImmersiveScreen.VerificationDirectory -> renderVerificationDirectory()
             is ImmersiveScreen.Outcome -> renderOutcome(screen)
             is ImmersiveScreen.Capture -> Unit
         }
@@ -134,7 +140,7 @@ class VerifyActivity : ComponentActivity() {
             addSpace(column, 16)
             column.addView(primaryButton("Enrolar una persona") { openSubjectSetup(SampleOperation.ENROLL) })
             addSpace(column, 12)
-            column.addView(secondaryButton("Verificar una identidad") { openSubjectSetup(SampleOperation.VERIFY) })
+            column.addView(secondaryButton("Verificar una identidad") { openVerificationDirectory() })
         }
         installColumn(column)
     }
@@ -165,19 +171,16 @@ class VerifyActivity : ComponentActivity() {
         renderSubjectSetup(operation)
     }
 
-    private fun renderSubjectSetup(operation: SampleOperation, validationMessage: String? = null) {
-        currentScreen = ImmersiveScreen.SubjectSetup(operation, validationMessage)
+    private fun renderSubjectSetup(
+        operation: SampleOperation,
+        validationMessage: String? = null,
+        subjectId: String = "",
+    ) {
+        currentScreen = ImmersiveScreen.SubjectSetup(operation, validationMessage, subjectId)
         val column = screenColumn()
-        val isEnrollment = operation == SampleOperation.ENROLL
-        column.addView(title(if (isEnrollment) "Enrolar una persona" else "Verificar una identidad"))
+        column.addView(title("Enrolar una persona"))
         column.addView(
-            body(
-                if (isEnrollment) {
-                    "Elige el correo que identificará este rostro. La captura empieza en el siguiente paso."
-                } else {
-                    "Selecciona una persona enrolada por este sample o escribe su correo. La captura empieza en el siguiente paso."
-                },
-            ),
+            body("Escribe el ID de persona que identificará este rostro. La captura empieza en el siguiente paso."),
         )
         validationMessage?.let {
             addSpace(column, 12)
@@ -185,35 +188,66 @@ class VerifyActivity : ComponentActivity() {
         }
         addSpace(column, 20)
 
-        val emailInput = EditText(this).apply {
-            hint = "Correo de la persona"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        val subjectIdInput = EditText(this).apply {
+            hint = "ID de persona"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(subjectId)
         }
-        column.addView(emailInput, fullWidth())
-
-        if (!isEnrollment) {
-            addSpace(column, 20)
-            column.addView(sectionTitle("Enroladas en este dispositivo"))
-            val subjects = knownSubjects()
-            if (subjects.isEmpty()) {
-                column.addView(body("Todavía no hay rostros enrolados desde este teléfono."))
-            } else {
-                subjects.forEach { email ->
-                    column.addView(secondaryButton(email) { emailInput.setText(email) })
-                    addSpace(column, 8)
-                }
-            }
-        }
+        column.addView(subjectIdInput, fullWidth())
 
         addSpace(column, 24)
+        column.addView(secondaryButton("Generar ID aleatorio") {
+            renderSubjectSetup(
+                operation = operation,
+                subjectId = SubjectId.generate(BuildConfig.FACECHECK_API_KEY),
+            )
+        })
+        addSpace(column, 12)
         column.addView(primaryButton("Continuar a la cámara") {
-            when (val next = ImmersiveSampleFlow.begin(operation, emailInput.text.toString())) {
+            when (val next = ImmersiveSampleFlow.begin(operation, subjectIdInput.text.toString())) {
                 is ImmersiveScreen.Capture -> renderCapture(next)
-                is ImmersiveScreen.SubjectSetup -> renderSubjectSetup(operation, next.validationMessage)
+                is ImmersiveScreen.SubjectSetup -> renderSubjectSetup(
+                    operation = operation,
+                    validationMessage = next.validationMessage,
+                    subjectId = next.subjectId,
+                )
                 else -> Unit
             }
         })
         addSpace(column, 12)
+        column.addView(secondaryButton("Volver") { renderHome() })
+        installColumn(column)
+    }
+
+    private fun openVerificationDirectory() {
+        blockingMessage()?.let {
+            renderPermissionGate(it)
+            return
+        }
+        renderVerificationDirectory()
+    }
+
+    private fun renderVerificationDirectory() {
+        currentScreen = ImmersiveScreen.VerificationDirectory
+        val column = screenColumn()
+        column.addView(title("Verificar una identidad"))
+        column.addView(
+            body("Selecciona un ID de persona enrolado por este sample en este dispositivo."),
+        )
+        addSpace(column, 20)
+        column.addView(sectionTitle("IDs enrolados en este dispositivo"))
+        val subjects = knownSubjects()
+        if (subjects.isEmpty()) {
+            column.addView(body("Todavía no hay rostros enrolados desde este teléfono."))
+        } else {
+            subjects.forEach { subjectId ->
+                addSpace(column, 8)
+                column.addView(secondaryButton(subjectId) {
+                    renderCapture(ImmersiveScreen.Capture(SampleOperation.VERIFY, subjectId))
+                })
+            }
+        }
+        addSpace(column, 24)
         column.addView(secondaryButton("Volver") { renderHome() })
         installColumn(column)
     }
@@ -320,18 +354,18 @@ class VerifyActivity : ComponentActivity() {
             try {
                 val succeeded = when (screen.operation) {
                     SampleOperation.ENROLL -> FaceCheck.enroll(
-                        email = screen.email,
+                        subjectId = screen.subjectId,
                         camera = controller,
                         machine = machine,
                     ).enrolled
                     SampleOperation.VERIFY -> FaceCheck.verify(
-                        email = screen.email,
+                        subjectId = screen.subjectId,
                         camera = controller,
                         machine = machine,
                     ).verified
                 }
                 if (succeeded && screen.operation == SampleOperation.ENROLL) {
-                    rememberSubject(screen.email)
+                    rememberSubject(screen.subjectId)
                 }
                 if (!succeeded && screen.operation == SampleOperation.ENROLL) {
                     enrollmentFailed = true
@@ -363,7 +397,7 @@ class VerifyActivity : ComponentActivity() {
                         loading = loading,
                     )
                     screen.operation == SampleOperation.ENROLL && outcome?.succeeded == true ->
-                        renderEnrollmentComplete(frame, loading, screen.email)
+                        renderEnrollmentComplete(frame, loading, screen.subjectId)
                     outcome != null -> renderOutcome(checkNotNull(outcome))
                 }
             }
@@ -505,7 +539,7 @@ class VerifyActivity : ComponentActivity() {
     private fun renderEnrollmentComplete(
         frame: FrameLayout,
         loading: View,
-        email: String,
+        subjectId: String,
     ) {
         currentScreen = ImmersiveScreen.Outcome(
             operation = SampleOperation.ENROLL,
@@ -532,9 +566,9 @@ class VerifyActivity : ComponentActivity() {
         }, fullWidth())
         addSpace(dialog, 12)
         dialog.addView(title("Enrolamiento completado"), fullWidth())
-        dialog.addView(body("El rostro de $email quedó listo para una verificación desde este dispositivo."))
+        dialog.addView(body("El rostro con ID $subjectId quedó listo para una verificación desde este dispositivo."))
         addSpace(dialog, 32)
-        dialog.addView(primaryButton("Verificar esta identidad") { openSubjectSetup(SampleOperation.VERIFY) })
+        dialog.addView(primaryButton("Verificar esta identidad") { renderVerificationDirectory() })
         addSpace(dialog, 12)
         dialog.addView(secondaryButton("Volver al inicio") { renderHome() })
         frame.addView(
@@ -602,8 +636,8 @@ class VerifyActivity : ComponentActivity() {
             .toList(),
     )
 
-    private fun rememberSubject(email: String) {
-        val remembered = LocalSubjectDirectory.remember(knownSubjects(), email)
+    private fun rememberSubject(subjectId: String) {
+        val remembered = LocalSubjectDirectory.remember(knownSubjects(), subjectId)
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(SUBJECTS_KEY, remembered.joinToString("\n"))
