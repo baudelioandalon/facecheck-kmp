@@ -35,6 +35,9 @@ DerivedData/
 .fleet/
 .vscode/
 
+# Worktrees locales de desarrollo.
+.worktrees/
+
 # SO
 .DS_Store
 Thumbs.db
