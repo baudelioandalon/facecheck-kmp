@@ -25,7 +25,8 @@ internal data class CapturePresentation(
                 stepLabel = "Alinea tu rostro",
                 progress = state.holdProgress,
             )
-            LivenessState.Capturing -> CapturePresentation(
+            LivenessState.Capturing,
+            is LivenessState.Done -> CapturePresentation(
                 instruction = finalizingInstruction,
                 stepLabel = "Pasos completados",
                 progress = 1f,

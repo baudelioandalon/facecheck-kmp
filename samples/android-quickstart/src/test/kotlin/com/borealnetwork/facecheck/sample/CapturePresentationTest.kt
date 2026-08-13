@@ -2,6 +2,8 @@ package com.borealnetwork.facecheck.sample
 
 import com.borealnetwork.facecheck.liveness.Challenge
 import com.borealnetwork.facecheck.liveness.ChallengePhase
+import com.borealnetwork.facecheck.liveness.FaceFrame
+import com.borealnetwork.facecheck.liveness.LivenessEvidence
 import com.borealnetwork.facecheck.liveness.LivenessState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,4 +43,27 @@ class CapturePresentationTest {
         assertEquals("Pasos completados", presentation.stepLabel)
         assertTrue(presentation.isFinalizing)
     }
+
+    @Test
+    fun `completed liveness keeps the finalizing handoff instead of showing listo`() {
+        val presentation = CapturePresentation.from(LivenessState.Done(emptyEvidence()))
+
+        assertEquals("Guardando enrolamiento…", presentation.instruction)
+        assertEquals("Pasos completados", presentation.stepLabel)
+        assertTrue(presentation.isFinalizing)
+    }
+
+    private fun emptyEvidence(): LivenessEvidence = LivenessEvidence(
+        primary = FaceFrame(
+            yaw = 0f,
+            pitch = 0f,
+            roll = 0f,
+            leftEyeOpen = null,
+            rightEyeOpen = null,
+            faceRatio = 0.3f,
+            trackingId = 1,
+            timestampMs = 0L,
+        ),
+        challenges = emptyList(),
+    )
 }

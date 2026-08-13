@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -106,6 +107,14 @@ class VerifyActivity : ComponentActivity() {
         currentScreen = ImmersiveScreen.Home
         val column = screenColumn()
         column.addView(title("Prueba FaceCheck"))
+        addSpace(column, 12)
+        column.addView(
+            environmentBadge(),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
         column.addView(body("Primero confirma los permisos. Después podrás elegir enrolar una persona o verificar una identidad."))
         addSpace(column, 24)
 
@@ -224,6 +233,18 @@ class VerifyActivity : ComponentActivity() {
         frame.addView(preview, matchParent())
         frame.addView(overlay, matchParent())
 
+        frame.addView(
+            environmentBadge(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START,
+            ).apply {
+                topMargin = 44
+                marginStart = 28
+            },
+        )
+
         val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
         frame.addView(
             cancelButton,
@@ -324,7 +345,7 @@ class VerifyActivity : ComponentActivity() {
                 throw cancelled
             } finally {
                 if (sessionId == activeCaptureId) {
-                    if (!enrollmentFailed) releaseCamera()
+                    if (screen.operation == SampleOperation.VERIFY) releaseCamera()
                     busy = false
                 }
             }
@@ -337,7 +358,7 @@ class VerifyActivity : ComponentActivity() {
                         cancelButton = cancelButton,
                     )
                     screen.operation == SampleOperation.ENROLL && outcome?.succeeded == true ->
-                        renderEnrollmentComplete(screen.email)
+                        renderEnrollmentComplete(frame, loading, screen.email)
                     outcome != null -> renderOutcome(checkNotNull(outcome))
                 }
             }
@@ -468,29 +489,52 @@ class VerifyActivity : ComponentActivity() {
         )
     }
 
-    private fun renderEnrollmentComplete(email: String) {
+    private fun renderEnrollmentComplete(
+        frame: FrameLayout,
+        loading: View,
+        email: String,
+    ) {
         currentScreen = ImmersiveScreen.Outcome(
             operation = SampleOperation.ENROLL,
             succeeded = true,
             message = successMessage(SampleOperation.ENROLL),
         )
-        val column = screenColumn()
-        column.gravity = Gravity.CENTER_HORIZONTAL
-        addSpace(column, 72)
-        column.addView(TextView(this).apply {
+        loading.visibility = View.GONE
+        releaseCamera()
+
+        frame.addView(View(this).apply {
+            setBackgroundColor(Color.argb(176, 3, 10, 19))
+        }, matchParent())
+        val dialog = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(48, 48, 48, 48)
+            setBackgroundColor(Color.rgb(249, 250, 252))
+        }
+        dialog.addView(TextView(this).apply {
             text = "✓"
             textSize = 80f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(24, 142, 92))
         }, fullWidth())
-        addSpace(column, 12)
-        column.addView(title("Enrolamiento completado"))
-        column.addView(body("El rostro de $email quedó listo para una verificación desde este dispositivo."))
-        addSpace(column, 32)
-        column.addView(primaryButton("Verificar esta identidad") { openSubjectSetup(SampleOperation.VERIFY) })
-        addSpace(column, 12)
-        column.addView(secondaryButton("Volver al inicio") { renderHome() })
-        installColumn(column)
+        addSpace(dialog, 12)
+        dialog.addView(title("Enrolamiento completado"), fullWidth())
+        dialog.addView(body("El rostro de $email quedó listo para una verificación desde este dispositivo."))
+        addSpace(dialog, 32)
+        dialog.addView(primaryButton("Verificar esta identidad") { openSubjectSetup(SampleOperation.VERIFY) })
+        addSpace(dialog, 12)
+        dialog.addView(secondaryButton("Volver al inicio") { renderHome() })
+        frame.addView(
+            dialog,
+            FrameLayout.LayoutParams(
+                MATCH,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            ).apply {
+                marginStart = 40
+                marginEnd = 40
+            },
+        )
     }
 
     private fun renderOutcome(screen: ImmersiveScreen.Outcome) {
@@ -597,6 +641,26 @@ class VerifyActivity : ComponentActivity() {
         text = value
         textSize = 16f
         setTextColor(color)
+    }
+
+    private fun environmentBadge(): TextView {
+        val environment = SampleEnvironment.fromApiKey(BuildConfig.FACECHECK_API_KEY)
+        val accent = if (environment == SampleEnvironment.PRODUCTION) {
+            Color.rgb(46, 104, 207)
+        } else {
+            Color.rgb(38, 128, 91)
+        }
+        return TextView(this).apply {
+            text = "Ambiente: ${environment.label}"
+            textSize = 12f
+            setTextColor(accent)
+            setPadding(18, 8, 18, 8)
+            background = GradientDrawable().apply {
+                cornerRadius = 100f
+                setColor(Color.argb(28, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                setStroke(1, Color.argb(100, Color.red(accent), Color.green(accent), Color.blue(accent)))
+            }
+        }
     }
 
     private fun primaryButton(label: String, action: () -> Unit): Button = Button(this).apply {

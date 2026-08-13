@@ -49,4 +49,10 @@ class ImmersiveSampleFlowTest {
         assertEquals("Intento 3 de 3", EnrollmentAttempt.first.retry()?.retry()?.label)
         assertNull(EnrollmentAttempt.first.retry()?.retry()?.retry())
     }
+
+    @Test
+    fun `environment badge comes from the API key prefix without exposing it`() {
+        assertEquals("TEST", SampleEnvironment.fromApiKey("lk_test_anything").label)
+        assertEquals("PRODUCTION", SampleEnvironment.fromApiKey("lk_live_anything").label)
+    }
 }
