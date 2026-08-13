@@ -95,7 +95,7 @@ captura. Durante el enrolamiento guía tres movimientos (izquierda, derecha y
 frente), muestra el progreso alrededor del rostro y en una barra inferior, y
 permite hasta tres intentos sin abandonar la cámara. Tras los pasos, presenta
 una pantalla de carga antes de guardar el enrolamiento. Para verificar, la lista contiene únicamente
-correos enrolados con ese sample en ese dispositivo; no consulta el directorio
+sujetos enrolados con ese sample en ese dispositivo; no consulta el directorio
 del dueño de la app desde una llave incluida en el APK. Si tu producto necesita
 esa lista, sírvela desde tu backend autenticado.
 
@@ -122,7 +122,7 @@ lifecycleScope.launch {
 lifecycleScope.launch {
     try {
         val result = FaceCheck.verify(
-            email = "persona@ejemplo.com",
+            subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
             camera = camera,
             machine = machine,
         )
@@ -148,6 +148,10 @@ Con una llave `lk_live_` hace falta además un **grant** firmado por tu propio
 backend: la llave de API viaja dentro del APK y por lo tanto no prueba nada
 sobre quién está llamando. Ver
 [Grants de registro](https://facecheck.borealnetwork.org/docs/grants).
+
+Un `subjectId` es un identificador opaco, no un correo. Para crear uno nuevo,
+usa `SubjectId.generate(apiKey)` una vez y guarda el resultado asociado a la
+cuenta de tu producto; usa ese mismo valor en las verificaciones posteriores.
 
 ---
 

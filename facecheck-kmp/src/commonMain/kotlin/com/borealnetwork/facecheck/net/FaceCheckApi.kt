@@ -2,6 +2,7 @@ package com.borealnetwork.facecheck.net
 
 import com.borealnetwork.facecheck.FaceCheckConfig
 import com.borealnetwork.facecheck.FaceCheckLogger
+import com.borealnetwork.facecheck.isValidSubjectId
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
@@ -74,7 +75,7 @@ internal class FaceCheckApi(
      * `POST /enroll`.
      *
      * [grant] is the integrator backend's signed authorisation to enrol this
-     * address; the backend demands one for `lk_live_` keys. It is never logged:
+     * subject; the backend demands one for `lk_live_` keys. It is never logged:
      * it is a bearer credential for one enrollment.
      *
      * [overwrite] maps to the backend's `overwrite` flag. Setting it is not by
@@ -83,19 +84,20 @@ internal class FaceCheckApi(
      * inside the tenant's app and cannot be treated as a secret.
      */
     suspend fun enroll(
-        email: String,
+        subjectId: String,
         selfie: ByteArray,
         ine: ByteArray? = null,
         grant: String? = null,
         overwrite: Boolean = false,
     ): EnrollResult {
+        requireValidSubjectId(subjectId)
         FaceCheckLogger.info {
-            "enroll: email=$email selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
+            "enroll: selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
                 "ine=${ine?.let { FaceCheckLogger.describeBytes(it.size) } ?: "none"} " +
                 "grant=${if (grant == null) "none" else "present"} overwrite=$overwrite"
         }
         return post(ENROLL_PATH) {
-            append("email", email)
+            append("subjectId", subjectId)
             if (grant != null) append("grant", grant)
             if (overwrite) append("overwrite", "true")
             appendImage("selfie", selfie)
@@ -109,22 +111,28 @@ internal class FaceCheckApi(
      * The response carries no similarity score by design; see [VerifyResult].
      */
     suspend fun verify(
-        email: String,
+        subjectId: String,
         selfie: ByteArray,
         compareWith: CompareWith = CompareWith.ENROLLMENT,
     ): VerifyResult {
+        requireValidSubjectId(subjectId)
         FaceCheckLogger.info {
-            "verify: email=$email selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
+            "verify: selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
                 "compareWith=${compareWith.wire}"
         }
         return post(VERIFY_PATH) {
-            append("email", email)
+            append("subjectId", subjectId)
             append("compareWith", compareWith.wire)
             appendImage("selfie", selfie)
         }
     }
 
     fun close() = client.close()
+
+    private fun requireValidSubjectId(subjectId: String) {
+        if (isValidSubjectId(subjectId)) return
+        throw FaceCheckException(FaceCheckErrorCode.INVALID_SUBJECT_ID)
+    }
 
     // --- Transport ------------------------------------------------------------
 

@@ -24,7 +24,7 @@ class FaceCheckException(
      * Whether retrying the exact same request could plausibly succeed.
      *
      * False for anything the caller has to fix first (a bad key, an unenrolled
-     * email, a face that does not match), true for transport failures and
+     * subject ID, a face that does not match), true for transport failures and
      * server faults. A [RATE_LIMITED][FaceCheckErrorCode.RATE_LIMITED] is
      * retryable, but only after [retryAfterSeconds].
      */
@@ -82,8 +82,8 @@ enum class FaceCheckErrorCode(
     ),
 
     // --- Request shape -------------------------------------------------------
-    MISSING_EMAIL("MISSING_EMAIL", "Falta el correo electrónico."),
-    INVALID_EMAIL("INVALID_EMAIL", "El correo electrónico no tiene un formato válido."),
+    MISSING_SUBJECT_ID("MISSING_SUBJECT_ID", "Falta el identificador del sujeto."),
+    INVALID_SUBJECT_ID("INVALID_SUBJECT_ID", "El identificador del sujeto no tiene un formato válido."),
     MISSING_FILE("MISSING_FILE", "No se envió la imagen requerida. Vuelve a intentarlo."),
     EMPTY_FILE("EMPTY_FILE", "La imagen llegó vacía. Vuelve a tomar la foto."),
     INVALID_IMAGE("INVALID_IMAGE", "No se pudo leer la imagen. Vuelve a tomar la foto."),
@@ -115,16 +115,16 @@ enum class FaceCheckErrorCode(
     // --- Subject lifecycle ---------------------------------------------------
     NOT_ENROLLED(
         "NOT_ENROLLED",
-        "Este correo no tiene un registro facial. Regístralo antes de verificar.",
+        "Este identificador no tiene un registro facial. Regístralo antes de verificar.",
     ),
     SUBJECT_ALREADY_ENROLLED(
         "SUBJECT_ALREADY_ENROLLED",
-        "Ese correo ya está enrolado. Para reemplazar la foto de referencia usa " +
+        "Ese identificador ya está enrolado. Para reemplazar la foto de referencia usa " +
             "overwrite = true con una selfie de la persona ya registrada.",
     ),
     REENROLLMENT_FACE_MISMATCH(
         "REENROLLMENT_FACE_MISMATCH",
-        "La selfie no coincide con el registro facial actual de ese correo.",
+        "La selfie no coincide con el registro facial actual de ese identificador.",
     ),
 
     // --- Enrollment grants ---------------------------------------------------
@@ -137,7 +137,7 @@ enum class FaceCheckErrorCode(
     ),
     ENROLLMENT_GRANT_INVALID(
         "ENROLLMENT_GRANT_INVALID",
-        "El grant de enrolamiento no es válido: revisa la firma, el correo, el " +
+        "El grant de enrolamiento no es válido: revisa la firma, el identificador, el " +
             "modo (test/live), su vigencia, y que no se haya usado antes.",
     ),
     MODEL_VERSION_MISMATCH(

@@ -22,7 +22,7 @@ import kotlin.random.Random
  *
  * val machine = FaceCheck.newChallengeMachine()   // observe machine.state in the UI
  * val result = FaceCheck.verify(
- *     email = "persona@ejemplo.com",
+ *     subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
  *     camera = createCameraController(host),
  *     machine = machine,
  * )
@@ -113,19 +113,19 @@ object FaceCheck {
     }
 
     /**
-     * Register [email]'s reference face: run a liveness session, then upload.
+     * Register [subjectId]'s reference face: run a liveness session, then upload.
      *
      * @param camera supplies frames and the still; see [CameraController].
      * @param machine the session to drive; observe its state for the UI.
      * @param grant a short-lived token signed by the integrator's own **backend**
-     *   authorising this address to be enrolled. Required for `lk_live_` keys
+     *   authorising this subject to be enrolled. Required for `lk_live_` keys
      *   and optional for `lk_test_` ones, because the API key ships inside the
      *   app and so proves nothing about who the caller is: without a grant,
-     *   anyone who extracts it could bind their face to someone else's address.
+     *   anyone who extracts it could bind their face to someone else's subject.
      *   The signing secret must never reach the device. See
      *   <https://facecheck.borealnetwork.org/docs/grants> for how to mint one.
-     * @param overwrite replace an existing enrollment for this address. Without
-     *   it an already-enrolled address fails with
+     * @param overwrite replace an existing enrollment for this subject. Without
+     *   it an already-enrolled subject fails with
      *   [SUBJECT_ALREADY_ENROLLED][FaceCheckErrorCode.SUBJECT_ALREADY_ENROLLED]
      *   rather than being silently replaced. With it, the backend still demands
      *   that the new selfie match the stored template — see [FaceCheckConfig].
@@ -135,7 +135,7 @@ object FaceCheck {
      * @throws FaceCheckException on a failed liveness session or a rejected request.
      */
     suspend fun enroll(
-        email: String,
+        subjectId: String,
         camera: CameraController,
         machine: ChallengeMachine = newChallengeMachine(),
         grant: String? = null,
@@ -145,7 +145,7 @@ object FaceCheck {
         val config = requireConfig()
         val capture = runLivenessSession(camera, machine, config.livenessTimeoutMs)
         return requireApi().enroll(
-            email = email,
+            subjectId = subjectId,
             selfie = capture.still,
             ine = ine,
             grant = grant,
@@ -154,7 +154,7 @@ object FaceCheck {
     }
 
     /**
-     * Match a fresh selfie for [email] against what is stored.
+     * Match a fresh selfie for [subjectId] against what is stored.
      *
      * @param compareWith which template to match. The backend may raise this to
      *   a stricter comparison but never lowers it; see [CompareWith].
@@ -164,7 +164,7 @@ object FaceCheck {
      *   comes back as [VerifyResult] with `verified = false` and a reason.
      */
     suspend fun verify(
-        email: String,
+        subjectId: String,
         camera: CameraController,
         machine: ChallengeMachine = newChallengeMachine(),
         compareWith: CompareWith = CompareWith.ENROLLMENT,
@@ -172,7 +172,7 @@ object FaceCheck {
         val config = requireConfig()
         val capture = runLivenessSession(camera, machine, config.livenessTimeoutMs)
         return requireApi().verify(
-            email = email,
+            subjectId = subjectId,
             selfie = capture.still,
             compareWith = compareWith,
         )

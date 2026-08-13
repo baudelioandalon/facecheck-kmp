@@ -108,8 +108,8 @@ data class FaceCheckConfig(
         ) {
             throw invalid("baseUrl debe ser una URL http(s) completa.")
         }
-        // A production key against a cleartext endpoint would put a selfie and an
-        // email on the wire in the clear. Refused outright rather than warned
+        // A production key against a cleartext endpoint would put a selfie and a
+        // subject ID on the wire in the clear. Refused outright rather than warned
         // about, because the SDK will not get a second chance to be noticed.
         if (mode == FaceCheckMode.LIVE && normalizedBaseUrl.startsWith("http://")) {
             throw invalid("Una llave 'lk_live_' exige HTTPS.")

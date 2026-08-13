@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.net
 
 import com.borealnetwork.facecheck.FaceCheckConfig
+import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
@@ -92,7 +93,7 @@ class FaceCheckApiTest {
     fun enroll_parses_the_success_envelope() = runTest {
         val api = api { respondJson(ENROLL_BODY) }
 
-        val result = api.enroll(email = "persona@ejemplo.com", selfie = SELFIE)
+        val result = api.enroll(subjectId = "person_demo_01", selfie = SELFIE)
 
         assertTrue(result.enrolled)
         assertEquals("test_9f86d081", result.subjectId)
@@ -108,7 +109,7 @@ class FaceCheckApiTest {
         // would force every integrator into a try/catch for the normal case.
         val api = api { respondJson(VERIFY_BODY) }
 
-        val result = api.verify("persona@ejemplo.com", SELFIE, CompareWith.BOTH)
+        val result = api.verify("person_demo_01", SELFIE, CompareWith.BOTH)
 
         assertFalse(result.verified)
         assertEquals("FACE_MISMATCH", result.reason)
@@ -125,7 +126,7 @@ class FaceCheckApiTest {
             respondJson("""{"enrolled":true,"subjectId":"s1","brandNewField":42}""")
         }
 
-        assertTrue(api.enroll("persona@ejemplo.com", SELFIE).enrolled)
+        assertTrue(api.enroll("person_demo_01", SELFIE).enrolled)
     }
 
     // --- The request on the wire ----------------------------------------------
@@ -138,7 +139,7 @@ class FaceCheckApiTest {
             respondJson(ENROLL_BODY)
         }
 
-        api.enroll("persona@ejemplo.com", SELFIE)
+        api.enroll("person_demo_01", SELFIE)
 
         val request = checkNotNull(seen)
         assertEquals(HttpMethod.Post, request.method)
@@ -151,18 +152,18 @@ class FaceCheckApiTest {
     }
 
     @Test
-    fun enroll_sends_the_fields_and_files_the_backend_requires() = runTest {
+    fun enroll_sends_subject_id_not_email_and_the_files_the_backend_requires() = runTest {
         var body = ""
         val api = api {
             body = it.body.readAsText()
             respondJson(ENROLL_BODY)
         }
 
-        api.enroll("Persona@Ejemplo.com", SELFIE, ine = INE, overwrite = true)
+        api.enroll("person_demo_01", SELFIE, ine = INE, overwrite = true)
 
-        // Sent exactly as given: normalising an email is the backend's job, and
-        // doing it in two places is how the two stop agreeing.
-        assertContains(body, "Persona@Ejemplo.com")
+        assertContains(body, "subjectId")
+        assertContains(body, "person_demo_01")
+        assertFalse(body.contains("name=\"email\""), "legacy email part: $body")
         assertContains(body, "overwrite")
         assertContains(body, "true")
         // Both the filename and the content type are mandatory: the backend
@@ -183,7 +184,7 @@ class FaceCheckApiTest {
             respondJson(ENROLL_BODY)
         }
 
-        api.enroll("persona@ejemplo.com", SELFIE)
+        api.enroll("person_demo_01", SELFIE)
 
         assertFalse(body.contains("overwrite"), "unexpected overwrite part: $body")
         assertFalse(body.contains("filename=\"ine.jpg\""), "unexpected ine part: $body")
@@ -197,7 +198,7 @@ class FaceCheckApiTest {
             respondJson(VERIFY_BODY)
         }
 
-        api.verify("persona@ejemplo.com", SELFIE, CompareWith.BOTH)
+        api.verify("person_demo_01", SELFIE, CompareWith.BOTH)
 
         assertContains(body, "compareWith")
         assertContains(body, "both")
@@ -215,7 +216,7 @@ class FaceCheckApiTest {
         }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.verify("desconocido@ejemplo.com", SELFIE)
+            api.verify("person_demo_unknown", SELFIE)
         }
 
         assertEquals(FaceCheckErrorCode.NOT_ENROLLED, failure.code)
@@ -235,7 +236,7 @@ class FaceCheckApiTest {
         }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.verify("persona@ejemplo.com", SELFIE)
+            api.verify("person_demo_01", SELFIE)
         }
 
         assertEquals(FaceCheckErrorCode.RATE_LIMITED, failure.code)
@@ -253,7 +254,7 @@ class FaceCheckApiTest {
         }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.enroll("persona@ejemplo.com", SELFIE)
+            api.enroll("person_demo_01", SELFIE)
         }
 
         assertEquals(FaceCheckErrorCode.UNKNOWN, failure.code)
@@ -265,7 +266,7 @@ class FaceCheckApiTest {
         val api = api { respondJson("not json at all") }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.enroll("persona@ejemplo.com", SELFIE)
+            api.enroll("person_demo_01", SELFIE)
         }
         assertEquals(FaceCheckErrorCode.INVALID_RESPONSE, failure.code)
     }
@@ -287,7 +288,7 @@ class FaceCheckApiTest {
         }
 
         assertFailsWith<FaceCheckException> {
-            api.enroll("persona@ejemplo.com", SELFIE, overwrite = true)
+            api.enroll("person_demo_01", SELFIE, overwrite = true)
         }
         assertEquals(1, attempts)
     }
@@ -304,7 +305,7 @@ class FaceCheckApiTest {
             }
         }
 
-        assertTrue(api.enroll("persona@ejemplo.com", SELFIE).enrolled)
+        assertTrue(api.enroll("person_demo_01", SELFIE).enrolled)
         assertEquals(3, attempts)
     }
 
@@ -320,7 +321,7 @@ class FaceCheckApiTest {
         }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.enroll("persona@ejemplo.com", SELFIE)
+            api.enroll("person_demo_01", SELFIE)
         }
 
         assertEquals(FaceCheckErrorCode.KEY_SERVICE_UNAVAILABLE, failure.code)
@@ -337,7 +338,7 @@ class FaceCheckApiTest {
         }
 
         val failure = assertFailsWith<FaceCheckException> {
-            api.verify("persona@ejemplo.com", SELFIE)
+            api.verify("person_demo_01", SELFIE)
         }
 
         assertEquals(FaceCheckErrorCode.NETWORK_ERROR, failure.code)
@@ -352,7 +353,7 @@ class FaceCheckApiTest {
             respondJson("""{"error":{"code":"INTERNAL","message":"boom"}}""", HttpStatusCode.InternalServerError)
         }
 
-        assertFailsWith<FaceCheckException> { api.enroll("persona@ejemplo.com", SELFIE) }
+        assertFailsWith<FaceCheckException> { api.enroll("person_demo_01", SELFIE) }
         assertEquals(1, attempts)
     }
 }
