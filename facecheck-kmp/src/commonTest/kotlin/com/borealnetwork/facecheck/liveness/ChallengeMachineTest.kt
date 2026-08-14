@@ -83,6 +83,70 @@ class ChallengeMachineTest {
     }
 
     @Test
+    fun outside_guide_frames_restart_the_three_second_positioning_hold() {
+        val machine = ChallengeMachine(
+            challenges = listOf(Challenge.TurnLeft),
+            config = testConfig.copy(positioningHoldMs = 3_000),
+        )
+
+        machine.onFrame(frame(atMs = 0))
+        machine.onFrame(frame(atMs = 2_900, insideGuide = false))
+
+        val outside = assertIs<LivenessState.Positioning>(machine.state.value)
+        assertEquals(PositioningHint.OUTSIDE_GUIDE, outside.hint)
+        assertEquals(0f, outside.holdProgress)
+
+        machine.onFrame(frame(atMs = 3_000))
+        machine.onFrame(frame(atMs = 5_999))
+        assertIs<LivenessState.Positioning>(machine.state.value)
+
+        machine.onFrame(frame(atMs = 6_000))
+        assertIs<LivenessState.ChallengeActive>(machine.state.value)
+    }
+
+    @Test
+    fun outside_guide_turn_action_does_not_enter_its_return_phase() {
+        val machine = machine(Challenge.TurnLeft)
+        val startedAt = machine.completePositioning()
+
+        machine.onFrame(frame(atMs = startedAt + 100, yaw = -40f, insideGuide = false))
+
+        val blocked = assertIs<LivenessState.ChallengeActive>(machine.state.value)
+        assertEquals(ChallengePhase.AWAITING_ACTION, blocked.phase)
+        assertEquals(PositioningHint.OUTSIDE_GUIDE, blocked.hint)
+
+        machine.onFrame(frame(atMs = startedAt + 200, yaw = 0f))
+        val resumed = assertIs<LivenessState.ChallengeActive>(machine.state.value)
+        assertEquals(ChallengePhase.AWAITING_ACTION, resumed.phase)
+        assertNull(resumed.hint)
+    }
+
+    @Test
+    fun outside_guide_frame_restarts_a_center_challenge_hold() {
+        val machine = ChallengeMachine(
+            challenges = listOf(Challenge.Center),
+            config = testConfig.copy(centerHoldMs = 3_000),
+        )
+        val startedAt = machine.completePositioning()
+
+        machine.onFrame(frame(atMs = startedAt + 100))
+        machine.onFrame(frame(atMs = startedAt + 1_500))
+        machine.onFrame(frame(atMs = startedAt + 2_500, insideGuide = false))
+
+        val blocked = assertIs<LivenessState.ChallengeActive>(machine.state.value)
+        assertEquals(ChallengePhase.AWAITING_ACTION, blocked.phase)
+        assertEquals(PositioningHint.OUTSIDE_GUIDE, blocked.hint)
+
+        machine.onFrame(frame(atMs = startedAt + 2_600))
+        machine.onFrame(frame(atMs = startedAt + 4_000))
+        machine.onFrame(frame(atMs = startedAt + 5_400))
+        assertIs<LivenessState.ChallengeActive>(machine.state.value)
+
+        machine.onFrame(frame(atMs = startedAt + 5_600))
+        assertEquals(LivenessState.Capturing, machine.state.value)
+    }
+
+    @Test
     fun a_center_challenge_needs_a_sustained_frontal_hold() {
         val machine = machine(Challenge.TurnLeft, Challenge.Center)
         val startedAt = machine.completePositioning()

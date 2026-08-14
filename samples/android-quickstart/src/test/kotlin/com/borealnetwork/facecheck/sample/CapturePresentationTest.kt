@@ -5,6 +5,7 @@ import com.borealnetwork.facecheck.liveness.ChallengePhase
 import com.borealnetwork.facecheck.liveness.FaceFrame
 import com.borealnetwork.facecheck.liveness.LivenessEvidence
 import com.borealnetwork.facecheck.liveness.LivenessState
+import com.borealnetwork.facecheck.liveness.PositioningHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -33,6 +34,33 @@ class CapturePresentationTest {
             1f,
             CapturePresentation(instruction = "Listo", stepLabel = "Completado", progress = 2f).ringProgress,
         )
+    }
+
+    @Test
+    fun `positioning maps progress to the three two one countdown`() {
+        assertEquals(
+            "Mantén el rostro dentro del óvalo · 3",
+            CapturePresentation.from(LivenessState.Positioning(PositioningHint.OK, holdProgress = 0f)).stepLabel,
+        )
+        assertEquals(
+            "Mantén el rostro dentro del óvalo · 2",
+            CapturePresentation.from(LivenessState.Positioning(PositioningHint.OK, holdProgress = .34f)).stepLabel,
+        )
+        assertEquals(
+            "Mantén el rostro dentro del óvalo · 1",
+            CapturePresentation.from(LivenessState.Positioning(PositioningHint.OK, holdProgress = .67f)).stepLabel,
+        )
+    }
+
+    @Test
+    fun `outside guide restores the positioning instruction and three second label`() {
+        val presentation = CapturePresentation.from(
+            LivenessState.Positioning(PositioningHint.OUTSIDE_GUIDE, holdProgress = 0f),
+        )
+
+        assertEquals("Vuelve a colocar tu rostro dentro del óvalo", presentation.instruction)
+        assertEquals("Mantén el rostro dentro del óvalo · 3", presentation.stepLabel)
+        assertEquals(0f, presentation.ringProgress)
     }
 
     @Test
