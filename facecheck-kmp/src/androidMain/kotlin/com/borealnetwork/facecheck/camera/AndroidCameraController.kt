@@ -404,7 +404,7 @@ class AndroidCameraController(
         val face = faces.maxByOrNull { it.boundingBox.width().toLong() * it.boundingBox.height() }
             ?: return FrameGeometry.noFace(timestampMs)
 
-        val (uprightWidth, _) = FrameGeometry.uprightSize(proxy, rotation)
+        val (uprightWidth, uprightHeight) = FrameGeometry.uprightSize(proxy, rotation)
         val faceInBuffer = FrameGeometry.uprightRectToBuffer(
             rect = face.boundingBox,
             rotationDegrees = rotation,
@@ -416,6 +416,7 @@ class AndroidCameraController(
             face = face,
             faceCount = faces.size,
             uprightWidth = uprightWidth,
+            uprightHeight = uprightHeight,
             quality = LumaMetrics.measure(proxy, faceInBuffer),
             timestampMs = timestampMs,
             mirroring = mirroring,

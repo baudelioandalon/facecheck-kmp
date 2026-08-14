@@ -4,6 +4,7 @@ import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import com.borealnetwork.facecheck.liveness.FaceFrame
 import com.borealnetwork.facecheck.liveness.FrameQuality
+import com.borealnetwork.facecheck.liveness.NormalizedFaceBounds
 import com.google.mlkit.vision.face.Face
 
 /**
@@ -58,6 +59,26 @@ internal object FrameGeometry {
     }
 
     /**
+     * Express an ML Kit rectangle from upright image coordinates as bounds in
+     * [NormalizedFaceBounds]' top-left coordinate convention.
+     */
+    fun normalizedBounds(
+        rect: Rect,
+        uprightWidth: Int,
+        uprightHeight: Int,
+    ): NormalizedFaceBounds {
+        require(uprightWidth > 0) { "uprightWidth must be positive" }
+        require(uprightHeight > 0) { "uprightHeight must be positive" }
+
+        return NormalizedFaceBounds(
+            left = (rect.left.toFloat() / uprightWidth).coerceIn(0f, 1f),
+            top = (rect.top.toFloat() / uprightHeight).coerceIn(0f, 1f),
+            right = (rect.right.toFloat() / uprightWidth).coerceIn(0f, 1f),
+            bottom = (rect.bottom.toFloat() / uprightHeight).coerceIn(0f, 1f),
+        )
+    }
+
+    /**
      * The frame emitted when the detector found nothing.
      *
      * Every pose field is zero and meaningless; `faceCount = 0` is the only part
@@ -93,6 +114,7 @@ internal object FrameGeometry {
         face: Face,
         faceCount: Int,
         uprightWidth: Int,
+        uprightHeight: Int,
         quality: FrameQuality,
         timestampMs: Long,
         mirroring: AnalysisMirroring,
@@ -120,6 +142,11 @@ internal object FrameGeometry {
             timestampMs = timestampMs,
             quality = quality,
             faceCount = faceCount,
+            bounds = normalizedBounds(
+                rect = face.boundingBox,
+                uprightWidth = uprightWidth,
+                uprightHeight = uprightHeight,
+            ),
         )
     }
 }

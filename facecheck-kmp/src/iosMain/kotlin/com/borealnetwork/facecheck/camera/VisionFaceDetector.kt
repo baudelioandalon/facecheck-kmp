@@ -3,6 +3,7 @@ package com.borealnetwork.facecheck.camera
 import com.borealnetwork.facecheck.FaceCheckLogger
 import com.borealnetwork.facecheck.liveness.FaceFrame
 import com.borealnetwork.facecheck.liveness.FrameQuality
+import com.borealnetwork.facecheck.liveness.NormalizedFaceBounds
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -131,6 +132,14 @@ class VisionFaceDetector(
         val angles = eulerDegrees(face)
         val eyes = eyeOpenness(face, buffer, orientation)
         val box = face.boundingBox.useContents { size.width.toFloat() }
+        val bounds = face.boundingBox.useContents {
+            NormalizedFaceBounds(
+                left = origin.x.toFloat(),
+                top = 1f - (origin.y + size.height).toFloat(),
+                right = (origin.x + size.width).toFloat(),
+                bottom = 1f - origin.y.toFloat(),
+            )
+        }
         val stats = pixelStats(buffer, face, orientation)
 
         return FaceFrame(
@@ -153,6 +162,7 @@ class VisionFaceDetector(
                 detectorScore = face.confidence,
             ),
             faceCount = observations.size,
+            bounds = bounds,
         )
     }
 
