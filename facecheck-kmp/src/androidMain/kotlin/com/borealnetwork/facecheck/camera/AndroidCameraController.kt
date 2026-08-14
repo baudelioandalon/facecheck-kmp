@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import android.graphics.RectF
 import android.os.Looper
 import android.os.SystemClock
+import android.view.View
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -12,6 +13,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.view.TransformExperimental
@@ -209,7 +211,11 @@ class AndroidCameraController(
      */
     fun attachPreview(view: PreviewView) {
         previewView = view
-        setSurfaceProvider(view.surfaceProvider)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            configurePreview(view)
+        } else {
+            mainExecutor.execute { configurePreview(view) }
+        }
     }
 
     /** Stop drawing into whatever [attachPreview] was given. */
@@ -227,6 +233,14 @@ class AndroidCameraController(
      */
     fun setPreviewFaceGuide(guide: ((RectF) -> Boolean)?) {
         previewFaceGuide = guide
+    }
+
+    /** Configure the view before its surface provider reaches a CameraX [Preview]. */
+    private fun configurePreview(view: PreviewView) {
+        if (previewView !== view) return
+        view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        setSurfaceProvider(view.surfaceProvider)
+        if (running.get()) cameraProvider?.let(::bind)
     }
 
     private fun setSurfaceProvider(provider: Preview.SurfaceProvider?) {
@@ -373,14 +387,34 @@ class AndroidCameraController(
             .setFlashMode(ImageCapture.FLASH_MODE_OFF)
             .build()
 
-        val useCases = mutableListOf(analysis, capture)
+        val attachedPreview = previewView
         val previewUseCase = surfaceProvider?.let { surface ->
             Preview.Builder().build().apply { setSurfaceProvider(surface) }
         }
-        if (previewUseCase != null) useCases.add(0, previewUseCase)
+
+        // PreviewView cannot expose a usable ViewPort until its first layout.
+        // Defer the first binding rather than bind independent use cases and
+        // accidentally map analysis coordinates into a different crop.
+        val viewPort = attachedPreview?.viewPort
+        if (previewUseCase != null && attachedPreview != null && viewPort == null) {
+            bindWhenPreviewViewportIsReady(provider, attachedPreview)
+            return
+        }
 
         provider.unbindAll()
-        provider.bindToLifecycle(lifecycleOwner, selector, *useCases.toTypedArray())
+        if (previewUseCase != null && viewPort != null) {
+            val useCaseGroup = UseCaseGroup.Builder()
+                .setViewPort(viewPort)
+                .addUseCase(previewUseCase)
+                .addUseCase(analysis)
+                .addUseCase(capture)
+                .build()
+            provider.bindToLifecycle(lifecycleOwner, selector, useCaseGroup)
+        } else {
+            // No preview remains a supported host configuration. It has no
+            // PreviewView coordinate space, so keep the historical two-use-case bind.
+            provider.bindToLifecycle(lifecycleOwner, selector, analysis, capture)
+        }
 
         imageAnalysis = analysis
         imageCapture = capture
@@ -388,6 +422,35 @@ class AndroidCameraController(
         FaceCheckLogger.info {
             "cámara abierta (${if (options.useFrontCamera) "frontal" else "trasera"}), " +
                 "preview=${previewUseCase != null}, mirroring=$mirroring"
+        }
+    }
+
+    /** Re-run binding once [PreviewView.viewPort] is available after layout. */
+    private fun bindWhenPreviewViewportIsReady(
+        provider: ProcessCameraProvider,
+        view: PreviewView,
+    ) {
+        val listener = object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                changedView: View,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int,
+            ) {
+                if (view.viewPort == null) return
+                changedView.removeOnLayoutChangeListener(this)
+                if (running.get() && previewView === view) bind(provider)
+            }
+        }
+        view.addOnLayoutChangeListener(listener)
+        if (view.viewPort != null) {
+            view.removeOnLayoutChangeListener(listener)
+            if (running.get() && previewView === view) bind(provider)
         }
     }
 
