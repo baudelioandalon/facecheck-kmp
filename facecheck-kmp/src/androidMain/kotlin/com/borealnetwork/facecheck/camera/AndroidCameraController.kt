@@ -177,6 +177,9 @@ class AndroidCameraController(
     @Volatile
     private var previewView: PreviewView? = null
 
+    /** Main-thread-only deferred bind awaiting a PreviewView layout. */
+    private var pendingPreviewLayout: PendingPreviewLayout? = null
+
     /**
      * Optional guide enforcement supplied by a host app.
      *
@@ -221,6 +224,7 @@ class AndroidCameraController(
     /** Stop drawing into whatever [attachPreview] was given. */
     fun detachPreview() {
         previewView = null
+        clearPendingPreviewLayout()
         setSurfaceProvider(null)
     }
 
@@ -238,6 +242,7 @@ class AndroidCameraController(
     /** Configure the view before its surface provider reaches a CameraX [Preview]. */
     private fun configurePreview(view: PreviewView) {
         if (previewView !== view) return
+        clearPendingPreviewLayoutOnMain()
         view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         setSurfaceProvider(view.surfaceProvider)
         if (running.get()) cameraProvider?.let(::bind)
@@ -293,6 +298,7 @@ class AndroidCameraController(
     }
 
     override fun stop() {
+        clearPendingPreviewLayout()
         if (!running.compareAndSet(true, false)) return
         mainExecutor.execute {
             imageAnalysis?.clearAnalyzer()
@@ -356,6 +362,7 @@ class AndroidCameraController(
      */
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        clearPendingPreviewLayout()
         stop()
         detector.close()
         analysisExecutor.shutdown()
@@ -430,6 +437,7 @@ class AndroidCameraController(
         provider: ProcessCameraProvider,
         view: PreviewView,
     ) {
+        clearPendingPreviewLayoutOnMain()
         val listener = object : View.OnLayoutChangeListener {
             override fun onLayoutChange(
                 changedView: View,
@@ -443,16 +451,57 @@ class AndroidCameraController(
                 oldBottom: Int,
             ) {
                 if (view.viewPort == null) return
-                changedView.removeOnLayoutChangeListener(this)
-                if (running.get() && previewView === view) bind(provider)
+                if (!consumePendingPreviewLayout(view, this)) return
+                if (running.get() && !closed.get() && previewView === view) bind(provider)
             }
         }
+        pendingPreviewLayout = PendingPreviewLayout(view, listener)
         view.addOnLayoutChangeListener(listener)
         if (view.viewPort != null) {
-            view.removeOnLayoutChangeListener(listener)
-            if (running.get() && previewView === view) bind(provider)
+            if (
+                consumePendingPreviewLayout(view, listener) &&
+                running.get() &&
+                !closed.get() &&
+                previewView === view
+            ) {
+                bind(provider)
+            }
         }
     }
+
+    /** Remove the single pending layout callback without retaining a closed capture. */
+    private fun clearPendingPreviewLayout() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            clearPendingPreviewLayoutOnMain()
+        } else {
+            mainExecutor.execute(::clearPendingPreviewLayoutOnMain)
+        }
+    }
+
+    /** Main-thread counterpart of [clearPendingPreviewLayout]. */
+    private fun clearPendingPreviewLayoutOnMain() {
+        pendingPreviewLayout?.let { pending ->
+            pending.view.removeOnLayoutChangeListener(pending.listener)
+        }
+        pendingPreviewLayout = null
+    }
+
+    /** Consume [listener] only when it is still the currently pending callback. */
+    private fun consumePendingPreviewLayout(
+        view: PreviewView,
+        listener: View.OnLayoutChangeListener,
+    ): Boolean {
+        val pending = pendingPreviewLayout
+        view.removeOnLayoutChangeListener(listener)
+        if (pending?.view !== view || pending.listener !== listener) return false
+        pendingPreviewLayout = null
+        return true
+    }
+
+    private data class PendingPreviewLayout(
+        val view: PreviewView,
+        val listener: View.OnLayoutChangeListener,
+    )
 
     // --- Analysis -------------------------------------------------------------
 
