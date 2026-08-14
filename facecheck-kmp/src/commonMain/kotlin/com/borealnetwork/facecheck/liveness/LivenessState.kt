@@ -110,6 +110,7 @@ enum class PositioningHint(val instructionEs: String) {
     /** Everything is fine; hold still. */
     OK("Mantente así"),
     NO_FACE("Coloca tu rostro dentro del marco"),
+    OUTSIDE_GUIDE("Vuelve a colocar tu rostro dentro del óvalo"),
     MULTIPLE_FACES("Debe haber solo una persona frente a la cámara"),
     MOVE_CLOSER("Acércate un poco más a la cámara"),
     MOVE_AWAY("Aléjate un poco de la cámara"),

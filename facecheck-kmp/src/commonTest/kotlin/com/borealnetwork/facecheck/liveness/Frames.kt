@@ -15,6 +15,7 @@ internal fun frame(
     faceRatio: Float = 0.40f,
     trackingId: Int? = 1,
     faceCount: Int = 1,
+    insideGuide: Boolean = true,
     sharpness: Float = FrameQuality.DEFAULT_SHARPNESS,
     brightness: Float = FrameQuality.DEFAULT_BRIGHTNESS,
     detectorScore: Float = FrameQuality.DEFAULT_DETECTOR_SCORE,
@@ -33,6 +34,7 @@ internal fun frame(
         detectorScore = detectorScore,
     ),
     faceCount = faceCount,
+    insideGuide = insideGuide,
 )
 
 /** Config with the production defaults, restated so tests read against a fixture. */

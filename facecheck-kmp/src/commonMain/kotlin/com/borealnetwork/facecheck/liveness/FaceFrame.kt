@@ -1,6 +1,24 @@
 package com.borealnetwork.facecheck.liveness
 
 /**
+ * A face rectangle in an upright image coordinate space normalized to 0..1.
+ *
+ * The origin is the top-left corner: [left] and [right] grow to the right,
+ * while [top] and [bottom] grow downwards.
+ */
+data class NormalizedFaceBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+) {
+    init {
+        require(left in 0f..1f && top in 0f..1f && right in 0f..1f && bottom in 0f..1f)
+        require(left < right && top < bottom)
+    }
+}
+
+/**
  * One analysed camera frame, as the platform's face detector saw it.
  *
  * This is the entire contract between the platform layer (CameraX + ML Kit on
@@ -63,6 +81,10 @@ data class FaceFrame(
      * are meaningless when it is 0.
      */
     val faceCount: Int = 1,
+    /** The detected face rectangle, when the platform can report it. */
+    val bounds: NormalizedFaceBounds? = null,
+    /** Whether the detected face is fully contained by the active visual guide. */
+    val insideGuide: Boolean = true,
 ) {
     /** True when exactly one face is present, i.e. the frame is scorable at all. */
     val hasSingleFace: Boolean get() = faceCount == 1
