@@ -97,6 +97,11 @@ kotlin {
             implementation(libs.mlkit.face.detection)
         }
 
+        androidUnitTest.dependencies {
+            implementation(kotlin("test-junit"))
+            implementation(libs.robolectric)
+        }
+
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }

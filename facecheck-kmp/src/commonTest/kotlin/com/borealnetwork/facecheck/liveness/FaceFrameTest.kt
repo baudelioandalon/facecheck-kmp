@@ -25,4 +25,23 @@ class FaceFrameTest {
         assertNull(candidate.bounds)
         assertTrue(candidate.insideGuide)
     }
+
+    @Test
+    fun `historical source constructor defaults guide fields`() {
+        val candidate = FaceFrame(
+            yaw = 1f,
+            pitch = 2f,
+            roll = 3f,
+            leftEyeOpen = .9f,
+            rightEyeOpen = .8f,
+            faceRatio = .4f,
+            trackingId = 7,
+            timestampMs = 42L,
+            quality = FrameQuality(sharpness = 111f, brightness = 122f, detectorScore = .8f),
+            faceCount = 1,
+        )
+
+        assertNull(candidate.bounds)
+        assertTrue(candidate.insideGuide)
+    }
 }

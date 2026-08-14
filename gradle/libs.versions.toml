@@ -27,6 +27,7 @@ camerax = "1.4.2"
 # first-run model download — a liveness SDK that fails on a device without a
 # Google account is not shippable.
 mlkit-face = "16.1.7"
+robolectric = "4.14.1"
 
 androidx-core = "1.17.0"
 androidx-activity = "1.11.0"
@@ -51,6 +52,7 @@ androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.r
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "mlkit-face" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
 # --- samples/android-quickstart ----------------------------------------------
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }

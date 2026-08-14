@@ -48,11 +48,25 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Applies the host guide only when CameraX produced preview-space face bounds. */
-internal fun guideContainsMappedFace(
-    mappedFaceBounds: RectF?,
+/**
+ * Map an analysis face rectangle into preview pixels and evaluate the host guide.
+ *
+ * This is the production CameraX transform seam: callers provide the live source
+ * and target [OutputTransform] instances, and this function performs the actual
+ * [CoordinateTransform] rather than accepting a pre-mapped rectangle.
+ */
+internal fun mapFaceBoundsToPreviewGuide(
+    source: OutputTransform?,
+    target: OutputTransform?,
+    faceBounds: RectF,
     guide: (RectF) -> Boolean,
-): Boolean = mappedFaceBounds?.let(guide) ?: false
+): Boolean {
+    val sourceTransform = source ?: return false
+    val targetTransform = target ?: return false
+    val mappedFaceBounds = RectF(faceBounds)
+    CoordinateTransform(sourceTransform, targetTransform).mapRect(mappedFaceBounds)
+    return guide(mappedFaceBounds)
+}
 
 /**
  * The default Android capture pipeline: CameraX for pixels, ML Kit for faces.
@@ -600,10 +614,12 @@ class AndroidCameraController(
     ): Boolean = runCatching {
         val source = imageProxyTransformFactory.getOutputTransform(proxy)
         val target = previewOutputTransform()
-        val mappedFaceBounds = target?.let {
-            RectF(face.boundingBox).also { bounds -> CoordinateTransform(source, it).mapRect(bounds) }
-        }
-        guideContainsMappedFace(mappedFaceBounds, guide)
+        mapFaceBoundsToPreviewGuide(
+            source = source,
+            target = target,
+            faceBounds = RectF(face.boundingBox),
+            guide = guide,
+        )
     }.getOrElse { failure ->
         FaceCheckLogger.warn { "no se pudo mapear el rostro al preview: ${failure.message}" }
         false

@@ -86,6 +86,36 @@ data class FaceFrame(
     /** Whether the detected face is fully contained by the active visual guide. */
     val insideGuide: Boolean = true,
 ) {
+    /**
+     * Binary-compatible constructor for callers compiled before guide metadata
+     * was appended to the primary constructor.
+     */
+    constructor(
+        yaw: Float,
+        pitch: Float,
+        roll: Float,
+        leftEyeOpen: Float?,
+        rightEyeOpen: Float?,
+        faceRatio: Float,
+        trackingId: Int?,
+        timestampMs: Long,
+        quality: FrameQuality = FrameQuality(),
+        faceCount: Int = 1,
+    ) : this(
+        yaw = yaw,
+        pitch = pitch,
+        roll = roll,
+        leftEyeOpen = leftEyeOpen,
+        rightEyeOpen = rightEyeOpen,
+        faceRatio = faceRatio,
+        trackingId = trackingId,
+        timestampMs = timestampMs,
+        quality = quality,
+        faceCount = faceCount,
+        bounds = null,
+        insideGuide = true,
+    )
+
     /** True when exactly one face is present, i.e. the frame is scorable at all. */
     val hasSingleFace: Boolean get() = faceCount == 1
 

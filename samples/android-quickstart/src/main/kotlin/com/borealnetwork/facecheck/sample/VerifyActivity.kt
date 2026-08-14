@@ -27,7 +27,6 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.borealnetwork.facecheck.FaceCheck
-import com.borealnetwork.facecheck.FaceCheckConfig
 import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.camera.AndroidCameraController
 import com.borealnetwork.facecheck.camera.CameraHost
@@ -84,7 +83,7 @@ class VerifyActivity : ComponentActivity() {
         if (BuildConfig.FACECHECK_API_KEY.isBlank()) return
         try {
             FaceCheck.initialize(
-                FaceCheckConfig(
+                sampleFaceCheckConfig(
                     apiKey = BuildConfig.FACECHECK_API_KEY,
                     baseUrl = BASE_URL,
                     livenessTimeoutMs = ENROLLMENT_LIVENESS_TIMEOUT_MS,
