@@ -21,7 +21,7 @@ servidor; el dispositivo nunca ve un score ni un umbral. Un `VerifyResult` con
 |---|---|
 | Artefacto | `org.borealnetwork:facecheck-kmp` |
 | Paquete | `com.borealnetwork.facecheck` |
-| Versión | `0.1.0` |
+| Versión | `1.0.0` |
 | Licencia | Apache 2.0 |
 | Android | `minSdk 24`, `compileSdk 36` |
 | iOS | framework estático `FaceCheckSDK` (`iosArm64`, `iosSimulatorArm64`, `iosX64`) |
@@ -40,7 +40,7 @@ En `gradle/libs.versions.toml`:
 
 ```toml
 [versions]
-facecheck = "0.1.0"
+facecheck = "1.0.0"
 
 [libraries]
 facecheck-kmp = { module = "org.borealnetwork:facecheck-kmp", version.ref = "facecheck" }
@@ -57,12 +57,12 @@ dependencies {
 O directo, sin catálogo:
 
 ```kotlin
-implementation("org.borealnetwork:facecheck-kmp:0.1.0")
+implementation("org.borealnetwork:facecheck-kmp:1.0.0")
 ```
 
-Un consumidor de **solo Android** puede depender del variante Android
-publicado, `org.borealnetwork:facecheck-kmp-android:0.1.0`, aunque normalmente
-Gradle lo resuelve solo desde la coordenada de arriba.
+El artefacto equivalente para un consumidor de **solo Android** es
+`org.borealnetwork:facecheck-kmp-android:1.0.0`, aunque normalmente Gradle lo
+resuelve solo desde la coordenada de arriba.
 
 El SDK arrastra CameraX y el detector facial de ML Kit **empaquetado** (no el de
 Play Services): no necesita cuenta de Google en el dispositivo ni descarga el
@@ -154,6 +154,9 @@ sobre quién está llamando. Ver
 Un `subjectId` es un identificador opaco. Para crear uno nuevo, usa
 `SubjectId.generate(apiKey)` una vez y guarda el resultado asociado a la
 cuenta de tu producto; usa ese mismo valor en las verificaciones posteriores.
+El generador produce exactamente `sub_<huella>_<aleatorio>`: 10 caracteres
+Base32 de SHA-256 de la llave y 16 bytes criptográficamente seguros como 22
+caracteres Base64URL sin relleno.
 
 ---
 
@@ -327,7 +330,7 @@ Al subir de versión: cambia `VERSION_NAME` en `gradle.properties`, actualiza el
 `CHANGELOG.md`, y **sube la misma versión en
 [`facecheck-android`](https://github.com/baudelioandalon/facecheck-android)**
 después de resincronizar su espejo. Los dos artefactos comparten numeración
-justamente para que `0.1.0` signifique el mismo código en los dos.
+justamente para que `1.0.0` signifique el mismo código en los dos.
 
 ---
 
