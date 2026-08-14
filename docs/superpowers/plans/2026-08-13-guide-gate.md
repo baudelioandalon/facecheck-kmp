@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-13-guide-gate-design.md`
 
+**Execution order override (user-directed):** Implement Tasks 1–5 and perform
+their static reviews before running automated or device tests. Task 6 creates
+and runs the complete verification matrix at the end. This deliberately trades
+early feedback for one consolidated validation pass.
+
 ## Global Constraints
 
 - The initial frontal hold is exactly `3_000L` ms and its countdown is `3`, `2`, `1`.
@@ -34,7 +39,8 @@
 | `facecheck-kmp/src/iosMain/.../camera/VisionFaceDetector.kt` | Vision rectangle normalization. |
 | `samples/android-quickstart/.../FaceGuideGeometry.kt` | Single pure oval/containment geometry for the sample. |
 | `samples/android-quickstart/.../FaceGuideOverlay.kt` | Draw the oval from `FaceGuideGeometry`. |
-| `samples/android-quickstart/.../GuideGatedCameraController.kt` | Decorate camera frames with the pure guide decision. |
+| `facecheck-kmp/src/androidMain/.../camera/AndroidCameraController.kt` | Map the ML Kit face rectangle into the actual `PreviewView` viewport before evaluating the guide. |
+| `samples/android-quickstart/.../PreviewFaceGuide.kt` | Small Android callback supplying the exact visible oval to the controller. |
 | `samples/android-quickstart/.../EnrollmentSessionPolicy.kt` | Three-second initial hold for enrollment. |
 | `samples/android-quickstart/.../CapturePresentation.kt` | Spanish countdown derived from hold progress. |
 | `samples/android-quickstart/.../VerifyActivity.kt` | Build and use one overlay/gate pair for each capture. |
@@ -47,14 +53,14 @@
 - Modify: `facecheck-kmp/src/commonMain/kotlin/com/borealnetwork/facecheck/liveness/FaceFrame.kt`
 - Modify: `facecheck-kmp/src/commonMain/kotlin/com/borealnetwork/facecheck/liveness/LivenessState.kt`
 - Modify: `facecheck-kmp/src/commonTest/kotlin/com/borealnetwork/facecheck/liveness/Frames.kt`
-- Test: `facecheck-kmp/src/commonTest/kotlin/com/borealnetwork/facecheck/liveness/FaceFrameTest.kt`
+- Test later (Task 6): `facecheck-kmp/src/commonTest/kotlin/com/borealnetwork/facecheck/liveness/FaceFrameTest.kt`
 
 **Interfaces:**
 - Produces `NormalizedFaceBounds(left: Float, top: Float, right: Float, bottom: Float)` with values in `[0f, 1f]`, `left < right`, and `top < bottom`.
 - Produces `FaceFrame.bounds: NormalizedFaceBounds? = null` and `FaceFrame.insideGuide: Boolean = true`.
 - Produces `PositioningHint.OUTSIDE_GUIDE("Vuelve a colocar tu rostro dentro del óvalo")`.
 
-- [ ] **Step 1: Write the failing contract tests**
+- [ ] **Step 1: Add the minimal common fields and guide hint**
 
 ```kotlin
 @Test fun `normalized bounds reject an inverted horizontal edge`() {
@@ -68,13 +74,7 @@
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify red**
-
-Run: `./gradlew :facecheck-kmp:allTests --tests '*FaceFrameTest*'`
-
-Expected: compilation fails because `NormalizedFaceBounds` and `insideGuide` do not exist.
-
-- [ ] **Step 3: Add the minimal common fields and guide hint**
+- [ ] **Step 2: Update the fixture API without running it yet**
 
 ```kotlin
 data class NormalizedFaceBounds(
@@ -92,13 +92,7 @@ data class FaceFrame(/* existing fields */, val bounds: NormalizedFaceBounds? = 
 
 Add `insideGuide` to the `frame()` fixture with a default of `true` so pre-existing tests retain their intended ideal face.
 
-- [ ] **Step 4: Run the focused tests to verify green**
-
-Run: `./gradlew :facecheck-kmp:allTests --tests '*FaceFrameTest*'`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit the pure contract**
+- [ ] **Step 3: Commit the pure contract**
 
 ```bash
 git add facecheck-kmp/src/commonMain/kotlin/com/borealnetwork/facecheck/liveness/{FaceFrame,LivenessState}.kt \
@@ -117,7 +111,7 @@ git commit -m "feat: expose guide compliance in liveness frames"
 - Produces `LivenessState.Positioning(OUTSIDE_GUIDE, 0f)` outside the guide.
 - Produces `ChallengeActive(..., hint = OUTSIDE_GUIDE)` without changing phase, evidence, or index.
 
-- [ ] **Step 1: Write failing engine tests**
+- [ ] **Step 1: Add one guide guard before all pose scoring**
 
 ```kotlin
 @Test fun `outside guide frontal frames cannot complete the three second positioning hold`() {
@@ -140,13 +134,7 @@ git commit -m "feat: expose guide compliance in liveness frames"
 
 Add one analogous test that breaks `Challenge.Center` midway through its hold and proves it restarts after re-entry.
 
-- [ ] **Step 2: Run the focused tests to verify red**
-
-Run: `./gradlew :facecheck-kmp:allTests --tests '*ChallengeMachineTest*'`
-
-Expected: FAIL because an out-of-guide frame currently advances a turn and the initial hold.
-
-- [ ] **Step 3: Add one guide guard before all pose scoring**
+- [ ] **Step 2: Preserve the intended test scenarios for Task 6**
 
 ```kotlin
 private fun guideProblem(frame: FaceFrame): PositioningHint? =
@@ -155,13 +143,7 @@ private fun guideProblem(frame: FaceFrame): PositioningHint? =
 
 Call it before `offerAsPrimary`, `positioningProblem`, `handleTurn`, and `handleCenter`. When it returns non-null, clear `holdStartedMs`, emit the applicable recoverable state, and return before recording `primaryFrame` or `extremeFrame`. Do not alter `stepStartedMs`.
 
-- [ ] **Step 4: Run engine tests to verify green**
-
-Run: `./gradlew :facecheck-kmp:allTests --tests '*ChallengeMachineTest*'`
-
-Expected: PASS, including existing timeout and face-swap tests.
-
-- [ ] **Step 5: Commit the liveness gate**
+- [ ] **Step 3: Commit the liveness gate**
 
 ```bash
 git add facecheck-kmp/src/commonMain/kotlin/com/borealnetwork/facecheck/liveness/ChallengeMachine.kt \
@@ -181,7 +163,7 @@ git commit -m "feat: block liveness steps outside guide"
 - Produces `FrameGeometry.normalizedBounds(rect, uprightWidth, uprightHeight): NormalizedFaceBounds`.
 - Produces non-null `FaceFrame.bounds` for both default platform detectors when a face exists.
 
-- [ ] **Step 1: Write failing Android geometry tests**
+- [ ] **Step 1: Implement platform-bound creation**
 
 ```kotlin
 @Test fun `normalizes an upright ML Kit rectangle`() {
@@ -194,13 +176,7 @@ git commit -m "feat: block liveness steps outside guide"
 
 Add an edge-clamping case and a zero-sized-dimension rejection case.
 
-- [ ] **Step 2: Run the geometry test to verify red**
-
-Run: `./gradlew :facecheck-kmp:testDebugUnitTest --tests '*FrameGeometryTest*'`
-
-Expected: compilation fails because `normalizedBounds` does not exist.
-
-- [ ] **Step 3: Implement platform-bound creation**
+- [ ] **Step 2: Preserve the Android geometry cases for Task 6**
 
 ```kotlin
 fun normalizedBounds(rect: Rect, uprightWidth: Int, uprightHeight: Int): NormalizedFaceBounds =
@@ -214,13 +190,7 @@ fun normalizedBounds(rect: Rect, uprightWidth: Int, uprightHeight: Int): Normali
 
 Pass this value from Android `frameOf`. On iOS convert Vision's normalized bottom-left `boundingBox` into the documented top-left upright convention with `top = 1f - (origin.y + size.height)` and `bottom = 1f - origin.y`, then pass it to `FaceFrame`.
 
-- [ ] **Step 4: Run Android and iOS tests to verify green**
-
-Run: `./gradlew :facecheck-kmp:allTests :facecheck-kmp:testDebugUnitTest`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit detector coordinates**
+- [ ] **Step 3: Commit detector coordinates**
 
 ```bash
 git add facecheck-kmp/src/androidMain/kotlin/com/borealnetwork/facecheck/camera/FrameGeometry.kt \
@@ -229,21 +199,22 @@ git add facecheck-kmp/src/androidMain/kotlin/com/borealnetwork/facecheck/camera/
 git commit -m "feat: report normalized face bounds from cameras"
 ```
 
-### Task 4: Build one Android guide geometry and decorate sample frames
+### Task 4: Build one Android guide geometry and map the real preview frame
 
 **Files:**
 - Create: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/FaceGuideGeometry.kt`
-- Create: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/GuideGatedCameraController.kt`
+- Create: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/PreviewFaceGuide.kt`
 - Modify: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/FaceGuideOverlay.kt`
 - Modify: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/VerifyActivity.kt`
+- Modify: `facecheck-kmp/src/androidMain/kotlin/com/borealnetwork/facecheck/camera/AndroidCameraController.kt`
 - Test: `samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/FaceGuideGeometryTest.kt`
 
 **Interfaces:**
-- Produces `FaceGuideGeometry(centerX, centerY, radiusX, radiusY)` in normalized top-left preview coordinates.
-- Produces `fun contains(bounds: NormalizedFaceBounds): Boolean`, requiring all four corners to lie within the oval.
-- Produces `GuideGatedCameraController(delegate, geometry)` whose `frames` copy `insideGuide = geometry.contains(bounds)` and use `false` when bounds are absent.
+- Produces `FaceGuideGeometry` in actual `PreviewView` pixels, with `contains(mappedFaceBounds: RectF): Boolean` requiring all four corners to lie within the oval.
+- Produces `PreviewFaceGuide` supplied by the sample to `AndroidCameraController` while a capture is active.
+- Produces the authoritative `FaceFrame.insideGuide` by mapping ML Kit `Face.boundingBox` through `ImageProxyTransformFactory(useRotationDegrees = true)` and `CoordinateTransform(source, PreviewView.outputTransform)` into the exact visible preview coordinates; an unavailable transform or absent face must result in `false` while guide enforcement is opted in.
 
-- [ ] **Step 1: Write failing containment tests**
+- [ ] **Step 1: Implement one shared oval and exact CameraX mapping**
 
 ```kotlin
 @Test fun `fully contained face passes the oval gate`() {
@@ -257,54 +228,34 @@ git commit -m "feat: report normalized face bounds from cameras"
 
 Add a test for a rectangle with its center inside but one corner outside; that is the regression the current visual-only oval misses.
 
-- [ ] **Step 2: Run guide tests to verify red**
+Use one `FaceGuideGeometry` instance for overlay drawing and containment. Do not compare normalized image rectangles to a normalized overlay: CameraX preview crop, scale, and rotation make that approximation unsafe. Map from the live `ImageProxy` to the live `PreviewView` output transform first, then call the same geometry. Construct and install the callback in `VerifyActivity` before starting enrollment/verification and remove it when the capture closes.
 
-Run: `./gradlew :samples:android-quickstart:testDebugUnitTest --tests '*FaceGuideGeometryTest*'`
+- [ ] **Step 2: Preserve containment and transform cases for Task 6**
 
-Expected: compilation fails because the geometry and wrapper do not exist.
+Test a fully contained face, an edge-touching face, a center-inside/corner-outside face, and unavailable transform blocking.
 
-- [ ] **Step 3: Implement one shared oval and Flow decorator**
-
-```kotlin
-fun contains(bounds: NormalizedFaceBounds): Boolean = listOf(
-    bounds.left to bounds.top, bounds.right to bounds.top,
-    bounds.left to bounds.bottom, bounds.right to bounds.bottom,
-).all { (x, y) -> ((x - centerX) / radiusX).pow(2) + ((y - centerY) / radiusY).pow(2) < 1f }
-
-override val frames: Flow<FaceFrame> = delegate.frames.map { frame ->
-    frame.copy(insideGuide = frame.bounds?.let(geometry::contains) == true)
-}
-```
-
-Make `FaceGuideOverlay` draw `FaceGuideGeometry` instead of recalculating its own dimensions. Construct one geometry in `VerifyActivity.renderCapture`, pass it to both overlay and wrapper, and pass the wrapper to `FaceCheck.enroll`/`verify`.
-
-- [ ] **Step 4: Run sample tests to verify green**
-
-Run: `./gradlew :samples:android-quickstart:testDebugUnitTest`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit the Android sample gate**
+- [ ] **Step 3: Commit the Android sample gate**
 
 ```bash
-git add samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/{FaceGuideGeometry,GuideGatedCameraController,FaceGuideOverlay,VerifyActivity}.kt \
+git add samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/{FaceGuideGeometry,PreviewFaceGuide,FaceGuideOverlay,VerifyActivity}.kt \
+  facecheck-kmp/src/androidMain/kotlin/com/borealnetwork/facecheck/camera/AndroidCameraController.kt \
   samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/FaceGuideGeometryTest.kt
 git commit -m "feat: enforce sample face guide"
 ```
 
-### Task 5: Present the three-second countdown and complete device verification
+### Task 5: Present the three-second countdown
 
 **Files:**
 - Modify: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/EnrollmentSessionPolicy.kt`
 - Modify: `samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/CapturePresentation.kt`
-- Modify: `samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/CapturePresentationTest.kt`
+- Test later (Task 6): `samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/CapturePresentationTest.kt`
 
 **Interfaces:**
 - Consumes `LivenessState.Positioning.holdProgress` and `PositioningHint.OUTSIDE_GUIDE`.
 - Produces `CapturePresentation.stepLabel` of `Mantén el rostro dentro del óvalo · 3`, `· 2`, or `· 1` while the initial hold is valid.
 - Produces enrollment config `positioningHoldMs = 3_000L`.
 
-- [ ] **Step 1: Write failing presentation tests**
+- [ ] **Step 1: Implement countdown mapping and policy**
 
 ```kotlin
 @Test fun `positioning shows a three second countdown`() {
@@ -319,13 +270,7 @@ git commit -m "feat: enforce sample face guide"
 }
 ```
 
-- [ ] **Step 2: Run presentation tests to verify red**
-
-Run: `./gradlew :samples:android-quickstart:testDebugUnitTest --tests '*CapturePresentationTest*'`
-
-Expected: FAIL because positioning currently renders `Alinea tu rostro` and enrollment uses the 700 ms default.
-
-- [ ] **Step 3: Implement countdown mapping and policy**
+- [ ] **Step 2: Preserve presentation cases for Task 6**
 
 ```kotlin
 private fun positioningLabel(progress: Float): String {
@@ -338,13 +283,28 @@ val livenessConfig = LivenessConfig(positioningHoldMs = 3_000, /* existing limit
 
 Use the same `holdProgress` already sent to the ring and lower progress bar; do not create a second timer in the activity.
 
-- [ ] **Step 4: Run all automated verification**
+- [ ] **Step 3: Commit user-facing timing**
 
-Run: `./gradlew :facecheck-kmp:allTests :samples:android-quickstart:testDebugUnitTest :samples:android-quickstart:assembleDebug`
+```bash
+git add samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/{EnrollmentSessionPolicy,CapturePresentation}.kt \
+  samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/CapturePresentationTest.kt
+git commit -m "feat: require stable frontal face before enrollment"
+```
+
+### Task 6: Add tests and run the complete verification matrix
+
+**Files:**
+- Create or modify the test files identified in Tasks 1–5.
+
+- [ ] **Step 1: Add the contract, machine, Android geometry, guide containment/transform, and presentation regression tests described above.**
+
+- [ ] **Step 2: Run all automated verification**
+
+Run: `./gradlew :facecheck-kmp:allTests :facecheck-kmp:testDebugUnitTest :samples:android-quickstart:testDebugUnitTest :samples:android-quickstart:assembleDebug`
 
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: Install and manually verify on Xiaomi**
+- [ ] **Step 3: Install and manually verify on Xiaomi**
 
 Run:
 
@@ -355,10 +315,10 @@ adb -s 3d9337d1 shell monkey -p com.borealnetwork.facecheck.sample 1
 
 Manual assertions: outside-oval frontal face does not advance; the `3→2→1` counter restarts after leaving the guide or moving; left/right/center do not count outside; a contained three-step enrollment reaches the completion sheet. Record only UI state and test result, never screenshots or logs containing a face.
 
-- [ ] **Step 6: Commit user-facing timing and tests**
+- [ ] **Step 4: Commit the regression tests**
 
 ```bash
-git add samples/android-quickstart/src/main/kotlin/com/borealnetwork/facecheck/sample/{EnrollmentSessionPolicy,CapturePresentation}.kt \
-  samples/android-quickstart/src/test/kotlin/com/borealnetwork/facecheck/sample/CapturePresentationTest.kt
-git commit -m "feat: require stable frontal face before enrollment"
+git add facecheck-kmp/src/commonTest facecheck-kmp/src/androidUnitTest \
+  samples/android-quickstart/src/test
+git commit -m "test: cover face guide gate and stable positioning"
 ```
