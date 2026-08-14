@@ -14,6 +14,7 @@ internal object EnrollmentSessionPolicy {
     )
 
     val livenessConfig: LivenessConfig = LivenessConfig(
+        positioningHoldMs = 3_000L,
         positioningTimeoutMs = 30_000,
         challengeTimeoutMs = 20_000,
         captureTimeoutMs = 15_000,

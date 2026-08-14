@@ -22,7 +22,7 @@ internal data class CapturePresentation(
             )
             is LivenessState.Positioning -> CapturePresentation(
                 instruction = state.instructionEs,
-                stepLabel = "Alinea tu rostro",
+                stepLabel = positioningLabel(state.holdProgress),
                 progress = state.holdProgress,
             )
             LivenessState.Capturing,
@@ -37,6 +37,11 @@ internal data class CapturePresentation(
                 stepLabel = "Preparando",
                 progress = state.progress,
             )
+        }
+
+        private fun positioningLabel(progress: Float): String {
+            val seconds = (3 - (progress.coerceIn(0f, .999f) * 3).toInt()).coerceIn(1, 3)
+            return "Mantén el rostro dentro del óvalo · $seconds"
         }
     }
 }
