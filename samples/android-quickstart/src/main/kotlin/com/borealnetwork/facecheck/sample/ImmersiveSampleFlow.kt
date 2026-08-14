@@ -20,6 +20,9 @@ internal sealed interface ImmersiveScreen {
 
     data object VerificationDirectory : ImmersiveScreen
 
+    /** Camera-only alignment before the user explicitly starts verification. */
+    data class VerificationPreflight(val subjectId: String) : ImmersiveScreen
+
     data class Capture(
         val operation: SampleOperation,
         val subjectId: String,
@@ -36,7 +39,10 @@ internal object ImmersiveSampleFlow {
     fun begin(operation: SampleOperation, subjectId: String): ImmersiveScreen {
         val normalized = subjectId.trim()
         return if (sampleSubjectIdPattern.matches(normalized)) {
-            ImmersiveScreen.Capture(operation, normalized)
+            when (operation) {
+                SampleOperation.ENROLL -> ImmersiveScreen.Capture(operation, normalized)
+                SampleOperation.VERIFY -> ImmersiveScreen.VerificationPreflight(normalized)
+            }
         } else {
             ImmersiveScreen.SubjectSetup(operation, "Escribe un ID de persona válido.", normalized)
         }

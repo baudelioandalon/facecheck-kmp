@@ -22,6 +22,14 @@ class ImmersiveSampleFlowTest {
     }
 
     @Test
+    fun `verification begins with a preflight instead of a live session`() {
+        assertEquals(
+            ImmersiveScreen.VerificationPreflight("Person_01"),
+            ImmersiveSampleFlow.begin(SampleOperation.VERIFY, " Person_01 "),
+        )
+    }
+
+    @Test
     fun `invalid subject ID stays in setup with guidance`() {
         assertEquals(
             ImmersiveScreen.SubjectSetup(

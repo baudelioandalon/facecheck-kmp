@@ -43,6 +43,7 @@ class VerifyActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
 
     private var camera: AndroidCameraController? = null
+    private var preflightJob: Job? = null
     private var challengeJob: Job? = null
     private var captureJob: Job? = null
     private var configured = false
@@ -105,6 +106,7 @@ class VerifyActivity : ComponentActivity() {
                 subjectId = screen.subjectId,
             )
             ImmersiveScreen.VerificationDirectory -> renderVerificationDirectory()
+            is ImmersiveScreen.VerificationPreflight -> Unit
             is ImmersiveScreen.Outcome -> renderOutcome(screen)
             is ImmersiveScreen.Capture -> Unit
         }
@@ -242,7 +244,7 @@ class VerifyActivity : ComponentActivity() {
             subjects.forEach { subjectId ->
                 addSpace(column, 8)
                 column.addView(secondaryButton(subjectId) {
-                    renderCapture(ImmersiveScreen.Capture(SampleOperation.VERIFY, subjectId))
+                    renderVerificationPreflight(subjectId)
                 })
             }
         }
@@ -401,6 +403,107 @@ class VerifyActivity : ComponentActivity() {
                     screen.operation == SampleOperation.ENROLL && outcome?.succeeded == true ->
                         renderEnrollmentComplete(frame, loading, screen.subjectId)
                     outcome != null -> renderOutcome(checkNotNull(outcome))
+                }
+            }
+        }
+    }
+
+    private fun renderVerificationPreflight(subjectId: String) {
+        blockingMessage()?.let {
+            renderPermissionGate(it)
+            return
+        }
+        currentScreen = ImmersiveScreen.VerificationPreflight(subjectId)
+        busy = true
+        val sessionId = ++activeCaptureId
+        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val preview = PreviewView(this)
+        val guideGeometry = FaceGuideGeometry()
+        val overlay = FaceGuideOverlay(this, guideGeometry)
+        frame.addView(preview, matchParent())
+        frame.addView(overlay, matchParent())
+        overlay.render(CapturePresentation("Coloca tu rostro dentro del óvalo", "Alineando rostro", 0f))
+
+        frame.addView(
+            environmentBadge(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START,
+            ).apply {
+                topMargin = 44
+                marginStart = 28
+            },
+        )
+        val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
+        frame.addView(
+            cancelButton,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+                topMargin = 36
+                marginEnd = 28
+            },
+        )
+
+        val guidance = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 56)
+            setBackgroundColor(Color.argb(224, 4, 12, 23))
+        }
+        val step = TextView(this).apply {
+            text = "Alineando rostro"
+            textSize = 14f
+            setTextColor(Color.rgb(155, 237, 203))
+        }
+        val instruction = TextView(this).apply {
+            text = "Coloca tu rostro dentro del óvalo"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            setPadding(0, 8, 0, 0)
+        }
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = ColorStateList.valueOf(Color.rgb(117, 224, 184))
+            progressBackgroundTintList = ColorStateList.valueOf(Color.rgb(52, 72, 80))
+            setPadding(0, 24, 0, 0)
+        }
+        var verificationReady = false
+        val startButton = primaryButton("Empezar verificación") {
+            if (sessionId != activeCaptureId || !verificationReady) return@primaryButton
+            activeCaptureId += 1
+            releaseCamera()
+            renderCapture(ImmersiveScreen.Capture(SampleOperation.VERIFY, subjectId))
+        }.apply { isEnabled = false }
+        guidance.addView(step)
+        guidance.addView(instruction)
+        guidance.addView(progress, LinearLayout.LayoutParams(MATCH, 12))
+        guidance.addView(startButton, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 24 })
+        frame.addView(guidance, FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        install(frame)
+
+        val controller = AndroidCameraController(host = CameraHost(this))
+        controller.attachPreview(preview)
+        controller.setPreviewFaceGuide(PreviewFaceGuide(guideGeometry::contains)::contains)
+        camera = controller
+        val readiness = VerificationPreflightReadiness()
+        controller.start()
+        preflightJob = lifecycleScope.launch {
+            try {
+                controller.frames.collect { faceFrame ->
+                    if (sessionId != activeCaptureId) return@collect
+                    val state = readiness.onFrame(faceFrame)
+                    step.text = state.stepLabel
+                    instruction.text = state.instruction
+                    progress.progress = (state.progress * 100).toInt()
+                    overlay.render(CapturePresentation(state.instruction, state.stepLabel, state.progress))
+                    verificationReady = state.isReady
+                    startButton.isEnabled = state.isReady
+                }
+            } catch (error: FaceCheckException) {
+                if (sessionId == activeCaptureId) {
+                    busy = false
+                    releaseCamera()
+                    renderOutcome(ImmersiveScreen.Outcome(SampleOperation.VERIFY, false, "${error.code}: ${error.message}"))
                 }
             }
         }
@@ -612,6 +715,8 @@ class VerifyActivity : ComponentActivity() {
     }
 
     private fun releaseCamera() {
+        preflightJob?.cancel()
+        preflightJob = null
         challengeJob?.cancel()
         challengeJob = null
         camera?.setPreviewFaceGuide(null)
