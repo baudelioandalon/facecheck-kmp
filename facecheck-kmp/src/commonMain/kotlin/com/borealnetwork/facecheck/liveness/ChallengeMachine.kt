@@ -206,6 +206,13 @@ class ChallengeMachine(
     }
 
     private fun handlePositioning(frame: FaceFrame) {
+        val guideProblem = guideProblem(frame)
+        if (guideProblem != null) {
+            holdStartedMs = null
+            _state.value = LivenessState.Positioning(guideProblem, holdProgress = 0f)
+            return
+        }
+
         // Scored before the pose gate: the sharpest, most frontal frame is worth
         // keeping even if the user has not yet held it long enough to advance.
         offerAsPrimary(frame)
@@ -240,6 +247,9 @@ class ChallengeMachine(
      * Ordered by what the user should fix first: being out of frame beats being
      * badly lit, which beats being slightly off-axis.
      */
+    private fun guideProblem(frame: FaceFrame): PositioningHint? =
+        PositioningHint.OUTSIDE_GUIDE.takeUnless { frame.insideGuide }
+
     private fun positioningProblem(frame: FaceFrame): PositioningHint? = when {
         frame.faceRatio < config.minFaceRatio -> PositioningHint.MOVE_CLOSER
         frame.faceRatio > config.maxFaceRatio -> PositioningHint.MOVE_AWAY
@@ -269,6 +279,13 @@ class ChallengeMachine(
     }
 
     private fun handleChallenge(frame: FaceFrame, current: LivenessState.ChallengeActive) {
+        val guideProblem = guideProblem(frame)
+        if (guideProblem != null) {
+            holdStartedMs = null
+            emitChallenge(current.copy(hint = guideProblem))
+            return
+        }
+
         // A face that drifted out of range still counts as present — the swap and
         // face-lost checks already passed — but it cannot advance the challenge,
         // because a pose measured on a face too small to resolve is noise.
