@@ -265,7 +265,8 @@ class VerifyActivity : ComponentActivity() {
         val sessionId = ++activeCaptureId
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val preview = PreviewView(this)
-        val overlay = FaceGuideOverlay(this)
+        val guideGeometry = FaceGuideGeometry()
+        val overlay = FaceGuideOverlay(this, guideGeometry)
         frame.addView(preview, matchParent())
         frame.addView(overlay, matchParent())
 
@@ -333,6 +334,8 @@ class VerifyActivity : ComponentActivity() {
 
         val controller = AndroidCameraController(host = CameraHost(this))
         controller.attachPreview(preview)
+        val previewFaceGuide = PreviewFaceGuide(guideGeometry::contains)
+        controller.setPreviewFaceGuide(previewFaceGuide::contains)
         camera = controller
         val machine = newChallengeMachine(screen.operation)
         val challengeFeedback = ChallengeCompletionFeedback()
@@ -612,6 +615,7 @@ class VerifyActivity : ComponentActivity() {
     private fun releaseCamera() {
         challengeJob?.cancel()
         challengeJob = null
+        camera?.setPreviewFaceGuide(null)
         camera?.close()
         camera = null
         captureJob = null

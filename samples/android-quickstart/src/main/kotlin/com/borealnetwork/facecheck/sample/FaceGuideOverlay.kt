@@ -6,18 +6,16 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.min
 
 /** Visual target for the face and liveness progress, drawn above the camera preview. */
 internal class FaceGuideOverlay @JvmOverloads constructor(
     context: Context,
+    private val geometry: FaceGuideGeometry,
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    private val faceBounds = RectF()
     private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(178, 5, 10, 18) }
     private val cutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
@@ -46,9 +44,14 @@ internal class FaceGuideOverlay @JvmOverloads constructor(
         invalidate()
     }
 
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        geometry.updateForViewport(width, height)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        updateFaceBounds()
+        val faceBounds = geometry.ovalBounds() ?: return
         val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
         canvas.drawOval(faceBounds, cutoutPaint)
@@ -56,13 +59,5 @@ internal class FaceGuideOverlay @JvmOverloads constructor(
 
         canvas.drawOval(faceBounds, borderPaint)
         canvas.drawArc(faceBounds, -90f, presentation.ringProgress * 360f, false, progressPaint)
-    }
-
-    private fun updateFaceBounds() {
-        val frameWidth = min(width * 0.76f, height * 0.54f)
-        val frameHeight = frameWidth * 1.28f
-        val left = (width - frameWidth) / 2f
-        val top = height * 0.16f
-        faceBounds.set(left, top, left + frameWidth, min(height * 0.78f, top + frameHeight))
     }
 }

@@ -2,6 +2,8 @@ package com.borealnetwork.facecheck.camera
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.RectF
+import android.os.Looper
 import android.os.SystemClock
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -12,6 +14,10 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.camera.view.TransformExperimental
+import androidx.camera.view.transform.CoordinateTransform
+import androidx.camera.view.transform.ImageProxyTransformFactory
+import androidx.camera.view.transform.OutputTransform
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.borealnetwork.facecheck.FaceCheckLogger
@@ -32,9 +38,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.Closeable
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -163,6 +171,25 @@ class AndroidCameraController(
     @Volatile
     private var surfaceProvider: Preview.SurfaceProvider? = null
 
+    /** The PreviewView whose output coordinates the optional guide receives. */
+    @Volatile
+    private var previewView: PreviewView? = null
+
+    /**
+     * Optional guide enforcement supplied by a host app.
+     *
+     * Its input is the face box after CameraX maps it into the exact visible
+     * PreviewView pixel coordinates. Leaving this unset retains the historical
+     * `insideGuide = true` behavior for every host that does not draw a guide.
+     */
+    @Volatile
+    private var previewFaceGuide: ((RectF) -> Boolean)? = null
+
+    @OptIn(TransformExperimental::class)
+    private val imageProxyTransformFactory = ImageProxyTransformFactory().apply {
+        setUsingRotationDegrees(true)
+    }
+
     /** Last `(faceCount, trackingId)` logged; see [logDetectionChange]. */
     @Volatile
     private var lastDetection: Pair<Int, Int?>? = null
@@ -181,12 +208,25 @@ class AndroidCameraController(
      * [AnalysisMirroring].
      */
     fun attachPreview(view: PreviewView) {
+        previewView = view
         setSurfaceProvider(view.surfaceProvider)
     }
 
     /** Stop drawing into whatever [attachPreview] was given. */
     fun detachPreview() {
+        previewView = null
         setSurfaceProvider(null)
+    }
+
+    /**
+     * Install or remove a gate for faces drawn in [PreviewView] coordinates.
+     *
+     * The controller maps ML Kit's face box from each live [ImageProxy] into
+     * the attached preview before invoking [guide]. A null guide deliberately
+     * preserves the default `FaceFrame.insideGuide = true` behavior.
+     */
+    fun setPreviewFaceGuide(guide: ((RectF) -> Boolean)?) {
+        previewFaceGuide = guide
     }
 
     private fun setSurfaceProvider(provider: Preview.SurfaceProvider?) {
@@ -397,7 +437,10 @@ class AndroidCameraController(
         rotation: Int,
         timestampMs: Long,
     ): FaceFrame {
-        if (faces.isEmpty()) return FrameGeometry.noFace(timestampMs)
+        val guide = previewFaceGuide
+        if (faces.isEmpty()) {
+            return FrameGeometry.noFace(timestampMs).copy(insideGuide = guide == null)
+        }
 
         // The largest face is the subject. With more than one in frame the
         // machine fails the session anyway, but it needs a real frame to do it.
@@ -412,7 +455,7 @@ class AndroidCameraController(
             bufferHeight = proxy.height,
         )
 
-        return FrameGeometry.frameOf(
+        val frame = FrameGeometry.frameOf(
             face = face,
             faceCount = faces.size,
             uprightWidth = uprightWidth,
@@ -421,6 +464,64 @@ class AndroidCameraController(
             timestampMs = timestampMs,
             mirroring = mirroring,
         )
+        return frame.copy(
+            insideGuide = guide?.let { isInsidePreviewFaceGuide(proxy, face, it) } ?: true,
+        )
+    }
+
+    /**
+     * Map ML Kit's upright face box into the visible PreviewView before checking
+     * the host-owned guide. Any unavailable transform or mapping failure blocks
+     * the frame rather than claiming a face is inside a guide we could not see.
+     */
+    @OptIn(TransformExperimental::class)
+    private fun isInsidePreviewFaceGuide(
+        proxy: ImageProxy,
+        face: Face,
+        guide: (RectF) -> Boolean,
+    ): Boolean = runCatching {
+        val source = imageProxyTransformFactory.getOutputTransform(proxy)
+        val target = previewOutputTransform()
+        if (target == null) {
+            false
+        } else {
+            val mappedFaceBounds = RectF(face.boundingBox)
+            CoordinateTransform(source, target).mapRect(mappedFaceBounds)
+            guide(mappedFaceBounds)
+        }
+    }.getOrElse { failure ->
+        FaceCheckLogger.warn { "no se pudo mapear el rostro al preview: ${failure.message}" }
+        false
+    }
+
+    /**
+     * PreviewView checks its main-thread affinity, so obtain its nullable output
+     * transform there even though face analysis is deliberately off the UI thread.
+     */
+    @OptIn(TransformExperimental::class)
+    private fun previewOutputTransform(): OutputTransform? {
+        val view = previewView ?: return null
+        if (Looper.myLooper() == Looper.getMainLooper()) return view.outputTransform
+
+        val result = AtomicReference<OutputTransform?>()
+        val completed = CountDownLatch(1)
+        return try {
+            mainExecutor.execute {
+                try {
+                    if (previewView === view) result.set(view.outputTransform)
+                } finally {
+                    completed.countDown()
+                }
+            }
+            completed.await()
+            result.get()
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            null
+        } catch (failure: RuntimeException) {
+            FaceCheckLogger.warn { "no se pudo obtener el transform del preview: ${failure.message}" }
+            null
+        }
     }
 
     /**
