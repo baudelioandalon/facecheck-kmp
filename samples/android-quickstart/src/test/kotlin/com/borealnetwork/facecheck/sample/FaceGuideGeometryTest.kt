@@ -13,7 +13,9 @@ class FaceGuideGeometryTest {
 
     @Test
     fun `fully contained face passes the oval gate`() {
-        assertTrue(guide.contains(rect(left = 450f, top = 600f, right = 550f, bottom = 800f)))
+        val previewGuide = PreviewFaceGuide(guide::contains)
+
+        assertTrue(previewGuide.contains(rect(left = 450f, top = 600f, right = 550f, bottom = 800f)))
     }
 
     @Test

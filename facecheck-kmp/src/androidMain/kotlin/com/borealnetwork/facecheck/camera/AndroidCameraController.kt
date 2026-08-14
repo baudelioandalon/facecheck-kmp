@@ -48,6 +48,12 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/** Applies the host guide only when CameraX produced preview-space face bounds. */
+internal fun guideContainsMappedFace(
+    mappedFaceBounds: RectF?,
+    guide: (RectF) -> Boolean,
+): Boolean = mappedFaceBounds?.let(guide) ?: false
+
 /**
  * The default Android capture pipeline: CameraX for pixels, ML Kit for faces.
  *
@@ -594,13 +600,10 @@ class AndroidCameraController(
     ): Boolean = runCatching {
         val source = imageProxyTransformFactory.getOutputTransform(proxy)
         val target = previewOutputTransform()
-        if (target == null) {
-            false
-        } else {
-            val mappedFaceBounds = RectF(face.boundingBox)
-            CoordinateTransform(source, target).mapRect(mappedFaceBounds)
-            guide(mappedFaceBounds)
+        val mappedFaceBounds = target?.let {
+            RectF(face.boundingBox).also { bounds -> CoordinateTransform(source, it).mapRect(bounds) }
         }
+        guideContainsMappedFace(mappedFaceBounds, guide)
     }.getOrElse { failure ->
         FaceCheckLogger.warn { "no se pudo mapear el rostro al preview: ${failure.message}" }
         false

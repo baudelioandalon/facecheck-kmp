@@ -1,8 +1,10 @@
 package com.borealnetwork.facecheck.liveness
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FaceFrameTest {
 
@@ -14,7 +16,13 @@ class FaceFrameTest {
     }
 
     @Test
-    fun `fixture can mark a detected face outside the guide`() {
-        assertFalse(frame(atMs = 0, insideGuide = false).insideGuide)
+    fun `fixture defaults to one scorable face inside an unbounded guide`() {
+        val candidate = frame(atMs = 0)
+
+        assertEquals(1, candidate.faceCount)
+        assertEquals(.40f, candidate.faceRatio)
+        assertEquals(1, candidate.trackingId)
+        assertNull(candidate.bounds)
+        assertTrue(candidate.insideGuide)
     }
 }

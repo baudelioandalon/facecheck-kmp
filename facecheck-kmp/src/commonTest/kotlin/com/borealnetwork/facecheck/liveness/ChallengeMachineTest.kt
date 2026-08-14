@@ -122,6 +122,23 @@ class ChallengeMachineTest {
     }
 
     @Test
+    fun outside_guide_right_turn_extreme_does_not_enter_its_return_phase() {
+        val machine = machine(Challenge.TurnRight)
+        val startedAt = machine.completePositioning()
+
+        machine.onFrame(frame(atMs = startedAt + 100, yaw = 40f, insideGuide = false))
+
+        val blocked = assertIs<LivenessState.ChallengeActive>(machine.state.value)
+        assertEquals(ChallengePhase.AWAITING_ACTION, blocked.phase)
+        assertEquals(PositioningHint.OUTSIDE_GUIDE, blocked.hint)
+
+        machine.onFrame(frame(atMs = startedAt + 200, yaw = 0f))
+        val resumed = assertIs<LivenessState.ChallengeActive>(machine.state.value)
+        assertEquals(ChallengePhase.AWAITING_ACTION, resumed.phase)
+        assertNull(resumed.hint)
+    }
+
+    @Test
     fun outside_guide_frame_restarts_a_center_challenge_hold() {
         val machine = ChallengeMachine(
             challenges = listOf(Challenge.Center),
