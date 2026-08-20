@@ -64,7 +64,7 @@ internal class FaceCheckApi(
     engine: HttpClientEngine? = null,
     private val random: Random = Random.Default,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) {
+) : FaceCheckBackend {
     private val json = Json {
         // A backend that starts returning one more field must not break apps
         // already in the field; there is no update path for a shipped SDK.
@@ -99,12 +99,12 @@ internal class FaceCheckApi(
      * [selfie] to match the template already on file, because the API key ships
      * inside the tenant's app and cannot be treated as a secret.
      */
-    suspend fun enroll(
+    override suspend fun enroll(
         subjectId: String,
         selfie: ByteArray,
-        ine: ByteArray? = null,
-        grant: String? = null,
-        overwrite: Boolean = false,
+        ine: ByteArray?,
+        grant: String?,
+        overwrite: Boolean,
     ): EnrollResult {
         requireValidSubjectId(subjectId)
         FaceCheckLogger.info {
@@ -126,10 +126,10 @@ internal class FaceCheckApi(
      *
      * The response carries no similarity score by design; see [VerifyResult].
      */
-    suspend fun verify(
+    override suspend fun verify(
         subjectId: String,
         selfie: ByteArray,
-        compareWith: CompareWith = CompareWith.ENROLLMENT,
+        compareWith: CompareWith,
     ): VerifyResult {
         requireValidSubjectId(subjectId)
         FaceCheckLogger.info {
@@ -143,13 +143,13 @@ internal class FaceCheckApi(
         }
     }
 
-    suspend fun getEnrollmentModelProfiles(): ModelProfileCatalog =
+    override suspend fun getEnrollmentModelProfiles(): ModelProfileCatalog =
         getJson("modelProfiles?operation=enroll")
 
-    suspend fun createLivenessSession(
+    override suspend fun createLivenessSession(
         operation: String,
         subjectId: String,
-        requestedModelProfileId: String? = null,
+        requestedModelProfileId: String?,
         location: LocationContext,
     ): LivenessSessionDescriptor {
         requireValidSubjectId(subjectId)
@@ -191,12 +191,12 @@ internal class FaceCheckApi(
         )
     }
 
-    suspend fun enroll(
+    override suspend fun enroll(
         session: LivenessSessionDescriptor,
         evidence: CapturedEvidenceBundle,
-        grant: String? = null,
-        overwrite: Boolean = false,
-        ine: ByteArray? = null,
+        grant: String?,
+        overwrite: Boolean,
+        ine: ByteArray?,
     ): EnrollResult {
         requireSession(session, operation = "enroll")
         return post(ENROLL_PATH) {
@@ -213,10 +213,10 @@ internal class FaceCheckApi(
         }
     }
 
-    suspend fun verify(
+    override suspend fun verify(
         session: LivenessSessionDescriptor,
         evidence: CapturedEvidenceBundle,
-        compareWith: CompareWith = CompareWith.ENROLLMENT,
+        compareWith: CompareWith,
     ): VerifyResult {
         requireSession(session, operation = "verify")
         return post(VERIFY_PATH) {
@@ -230,7 +230,7 @@ internal class FaceCheckApi(
         }
     }
 
-    fun close() = client.close()
+    override fun close() = client.close()
 
     private fun requireValidSubjectId(subjectId: String) {
         if (isValidSubjectId(subjectId)) return

@@ -5,13 +5,13 @@ facial [FaceCheck](https://facecheck.borealnetwork.org).
 
 Hace tres cosas, y solo tres:
 
-1. **Guía al usuario** con una sesión de retos de vida en pantalla ("gira la
-   cabeza a la izquierda", "mira de frente") hasta conseguir una foto frontal,
-   nítida y bien iluminada.
-2. **Captura esa foto** con la cámara frontal — CameraX + ML Kit en Android,
-   AVFoundation + Vision en iOS.
-3. **La sube** al backend de FaceCheck, que decide si corresponde a la persona
-   registrada.
+1. **Prepara una sesión** con el backend, que devuelve el perfil de modelo y el
+   orden de retos que se ejecutará en el teléfono.
+2. **Guía al usuario** con Active Liveness / Anti-Replay v1 hasta capturar cinco
+   evidencias canónicas: `front_initial`, `turn_first`, `center_between`,
+   `turn_second` y `front_final`.
+3. **Sube esas evidencias** al backend de FaceCheck, que valida la sesión,
+   compara la identidad y decide si corresponde a la persona registrada.
 
 El SDK **no decide nada**. La comparación, el umbral y el veredicto viven en el
 servidor; el dispositivo nunca ve un score ni un umbral. Un `VerifyResult` con
@@ -114,19 +114,44 @@ FaceCheck.initialize(
 val camera = AndroidCameraController(host = CameraHost(activity))
 camera.attachPreview(previewView)
 
-// Se construye antes de arrancar para poder pintar la primera instrucción
-// de inmediato, en vez de una pantalla vacía hasta el primer cuadro.
-val machine = FaceCheck.newChallengeMachine()
-lifecycleScope.launch {
-    machine.state.collect { statusView.text = it.instructionEs }
-}
-
 lifecycleScope.launch {
     try {
-        val result = FaceCheck.verify(
+        val location = LocationContext(
+            latitude = currentLatitude,
+            longitude = currentLongitude,
+            accuracyMeters = currentAccuracy,
+            capturedAt = Clock.System.now(),
+        )
+
+        val catalog = FaceCheck.enrollmentModelProfiles()
+        val profile = requireNotNull(catalog.defaultProfile)
+
+        val enrollment = FaceCheck.prepareEnrollment(
             subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
+            modelProfileId = profile.id,
+            location = location,
+        )
+        lifecycleScope.launch {
+            enrollment.state.collect { state ->
+                statusView.text = when (state) {
+                    ActiveLivenessState.Ready -> "Listo"
+                    is ActiveLivenessState.Capturing -> state.presentation.instructionEs
+                    ActiveLivenessState.Uploading -> "Guardando enrolamiento…"
+                    ActiveLivenessState.Processing -> "Procesando…"
+                    ActiveLivenessState.Completed -> "Enrolamiento completado"
+                    is ActiveLivenessState.Failed -> state.error.message
+                    ActiveLivenessState.Cancelled -> "Cancelado"
+                }
+            }
+        }
+        enrollment.run(camera = camera)
+
+        val verification = FaceCheck.prepareVerification(
+            subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
+            location = location,
+        )
+        val result = verification.run(
             camera = camera,
-            machine = machine,
         )
         statusView.text = if (result.verified) {
             "Verificado"
@@ -145,11 +170,11 @@ Un rostro que simplemente **no coincide** no es una excepción: regresa como
 `VerifyResult(verified = false)` con una razón. `FaceCheckException` es para
 sesiones de vida fallidas, problemas de red y peticiones rechazadas.
 
-Para registrar el rostro de referencia de alguien se usa `FaceCheck.enroll(...)`.
-Con una llave `lk_live_` hace falta además un **grant** firmado por tu propio
-backend: la llave de API viaja dentro del APK y por lo tanto no prueba nada
-sobre quién está llamando. Ver
-[Grants de registro](https://facecheck.borealnetwork.org/docs/grants).
+Para registrar el rostro de referencia de alguien se usa
+`FaceCheck.prepareEnrollment(...).run(...)`. Con una llave `lk_live_` hace falta
+además un **grant** firmado por tu propio backend al llamar `run(grant = ...)`:
+la llave de API viaja dentro del APK y por lo tanto no prueba nada sobre quién
+está llamando. Ver [Grants de registro](https://facecheck.borealnetwork.org/docs/grants).
 
 Un `subjectId` es un identificador opaco. Para crear uno nuevo, usa
 `SubjectId.generate(apiKey)` una vez y guarda el resultado asociado a la

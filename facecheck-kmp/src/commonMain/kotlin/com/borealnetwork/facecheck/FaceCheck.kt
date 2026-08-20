@@ -3,12 +3,17 @@ package com.borealnetwork.facecheck
 import com.borealnetwork.facecheck.camera.CameraController
 import com.borealnetwork.facecheck.liveness.ChallengeMachine
 import com.borealnetwork.facecheck.liveness.ChallengePlan
+import com.borealnetwork.facecheck.liveness.EnrollmentSession
+import com.borealnetwork.facecheck.liveness.VerificationSession
 import com.borealnetwork.facecheck.liveness.runLivenessSession
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.LocationContext
+import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
+import com.borealnetwork.facecheck.net.FaceCheckBackend
 import com.borealnetwork.facecheck.net.FaceCheckApi
 import kotlin.random.Random
 
@@ -46,7 +51,7 @@ import kotlin.random.Random
 object FaceCheck {
 
     private var activeConfig: FaceCheckConfig? = null
-    private var api: FaceCheckApi? = null
+    private var api: FaceCheckBackend? = null
 
     /** The configuration in force, or null before [initialize]. */
     val config: FaceCheckConfig?
@@ -84,6 +89,13 @@ object FaceCheck {
         FaceCheckLogger.info { "FaceCheck initialized: $config" }
     }
 
+    internal fun initializeForTests(config: FaceCheckConfig, backend: FaceCheckBackend) {
+        shutdown()
+        activeConfig = config
+        api = backend
+        FaceCheckLogger.level = config.logLevel
+    }
+
     /**
      * Release the HTTP client and forget the configuration.
      *
@@ -110,6 +122,38 @@ object FaceCheck {
             challenges = ChallengePlan.random(config.challengeCount, random),
             config = config.liveness,
         )
+    }
+
+    suspend fun enrollmentModelProfiles(): ModelProfileCatalog =
+        requireApi().getEnrollmentModelProfiles()
+
+    suspend fun prepareEnrollment(
+        subjectId: String,
+        modelProfileId: String,
+        location: LocationContext,
+    ): EnrollmentSession {
+        val config = requireConfig()
+        val descriptor = requireApi().createLivenessSession(
+            operation = "enroll",
+            subjectId = subjectId,
+            requestedModelProfileId = modelProfileId,
+            location = location,
+        )
+        return EnrollmentSession(descriptor, requireApi(), config)
+    }
+
+    suspend fun prepareVerification(
+        subjectId: String,
+        location: LocationContext,
+    ): VerificationSession {
+        val config = requireConfig()
+        val descriptor = requireApi().createLivenessSession(
+            operation = "verify",
+            subjectId = subjectId,
+            requestedModelProfileId = null,
+            location = location,
+        )
+        return VerificationSession(descriptor, requireApi(), config)
     }
 
     /**
@@ -181,6 +225,6 @@ object FaceCheck {
     private fun requireConfig(): FaceCheckConfig = activeConfig
         ?: throw FaceCheckException(FaceCheckErrorCode.NOT_INITIALIZED)
 
-    private fun requireApi(): FaceCheckApi = api
+    private fun requireApi(): FaceCheckBackend = api
         ?: throw FaceCheckException(FaceCheckErrorCode.NOT_INITIALIZED)
 }

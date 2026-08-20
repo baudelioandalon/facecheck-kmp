@@ -7,7 +7,15 @@ Los cambios incompatibles se anuncian aquí y en las notas del release.
 
 ## [No publicado]
 
-Nada todavía.
+### Agregado
+
+- `FaceCheck.enrollmentModelProfiles()` consulta el catálogo seguro del backend,
+  incluyendo el perfil default y los pesos exactos de artefactos.
+- `FaceCheck.prepareEnrollment(...)` y `FaceCheck.prepareVerification(...)`
+  crean sesiones de Active Liveness server-driven antes de abrir captura.
+- `EnrollmentSession` y `VerificationSession` exponen
+  `StateFlow<ActiveLivenessState>` y ejecutan una sola vez la captura canónica
+  de cinco evidencias.
 
 ## [1.0.0] — 2026-08-13
 

@@ -55,6 +55,7 @@ import kotlin.coroutines.resumeWithException
  * and target [OutputTransform] instances, and this function performs the actual
  * [CoordinateTransform] rather than accepting a pre-mapped rectangle.
  */
+@TransformExperimental
 internal fun mapFaceBoundsToPreviewGuide(
     source: OutputTransform?,
     target: OutputTransform?,
@@ -210,7 +211,7 @@ class AndroidCameraController(
     @Volatile
     private var previewFaceGuide: ((RectF) -> Boolean)? = null
 
-    @OptIn(TransformExperimental::class)
+    @TransformExperimental
     private val imageProxyTransformFactory = ImageProxyTransformFactory().apply {
         setUsingRotationDegrees(true)
     }
@@ -529,6 +530,7 @@ class AndroidCameraController(
     private inner class FaceAnalyzer : ImageAnalysis.Analyzer {
 
         @ExperimentalGetImage
+        @TransformExperimental
         override fun analyze(proxy: ImageProxy) {
             val media = proxy.image
             if (media == null) {
@@ -564,6 +566,7 @@ class AndroidCameraController(
         }
     }
 
+    @TransformExperimental
     private fun toFrame(
         faces: List<Face>,
         proxy: ImageProxy,
@@ -607,7 +610,7 @@ class AndroidCameraController(
      * the host-owned guide. Any unavailable transform or mapping failure blocks
      * the frame rather than claiming a face is inside a guide we could not see.
      */
-    @OptIn(TransformExperimental::class)
+    @TransformExperimental
     private fun isInsidePreviewFaceGuide(
         proxy: ImageProxy,
         face: Face,
@@ -630,7 +633,7 @@ class AndroidCameraController(
      * PreviewView checks its main-thread affinity, so obtain its nullable output
      * transform there even though face analysis is deliberately off the UI thread.
      */
-    @OptIn(TransformExperimental::class)
+    @TransformExperimental
     private fun previewOutputTransform(): OutputTransform? {
         val view = previewView ?: return null
         if (Looper.myLooper() == Looper.getMainLooper()) return view.outputTransform
