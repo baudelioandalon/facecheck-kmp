@@ -190,6 +190,10 @@ enum class FaceCheckErrorCode(
         "LIVENESS_SESSION_MISMATCH",
         "La sesión no coincide con esta solicitud.",
     ),
+    LIVENESS_SESSION_INVALID(
+        "LIVENESS_SESSION_INVALID",
+        "La solicitud de sesión de liveness no es válida.",
+    ),
     LIVENESS_SESSION_CONSUMED(
         "LIVENESS_SESSION_CONSUMED",
         "Esta sesión ya fue utilizada. Crea una nueva e intenta de nuevo.",

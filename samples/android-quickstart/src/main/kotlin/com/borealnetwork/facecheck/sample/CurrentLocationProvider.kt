@@ -68,10 +68,7 @@ internal class CurrentLocationProvider(context: Context) {
         cont.invokeOnCancellation { locationManager.removeUpdates(listener) }
     }
 
-    private fun providers(): List<String> = listOf(
-        LocationManager.GPS_PROVIDER,
-        LocationManager.NETWORK_PROVIDER,
-    )
+    private fun providers(): List<String> = LocationProviderSelection.providers
 
     private fun Location.toLocationContext(): LocationContext {
         val age = ageMs().coerceAtLeast(0L)

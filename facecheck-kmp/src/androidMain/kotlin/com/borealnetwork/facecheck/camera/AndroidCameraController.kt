@@ -128,6 +128,7 @@ class AndroidCameraController(
         Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "FaceCheck-analysis").apply { isDaemon = true }
         }
+    private val mlKitCallbackExecutor = MlKitCallbackExecutor(analysisExecutor)
 
     private val detector: FaceDetector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
@@ -546,7 +547,8 @@ class AndroidCameraController(
                 // On the analysis executor, not the default main thread: the
                 // success listener is where the Y plane gets sampled, and doing
                 // that on the UI thread would stutter the preview.
-                .addOnSuccessListener(analysisExecutor) { faces ->
+                .addOnSuccessListener(mlKitCallbackExecutor) { faces ->
+                    if (closed.get()) return@addOnSuccessListener
                     runCatching {
                         val frame = toFrame(faces, proxy, rotation, timestampMs)
                         logDetectionChange(frame)
@@ -555,14 +557,15 @@ class AndroidCameraController(
                         FaceCheckLogger.warn { "no se pudo armar el frame: ${it.message}" }
                     }
                 }
-                .addOnFailureListener(analysisExecutor) { failure ->
+                .addOnFailureListener(mlKitCallbackExecutor) { failure ->
+                    if (closed.get()) return@addOnFailureListener
                     FaceCheckLogger.warn { "ML Kit falló en un frame: ${failure.message}" }
                 }
                 // The proxy has to outlive the detection — ML Kit reads the
                 // underlying Image asynchronously — and CameraX will not deliver
                 // another frame until it is closed, so this is also the back
                 // pressure. Exactly once, whatever happened.
-                .addOnCompleteListener(analysisExecutor) { proxy.close() }
+                .addOnCompleteListener(mlKitCallbackExecutor) { proxy.close() }
         }
     }
 
