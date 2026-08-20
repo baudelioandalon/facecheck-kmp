@@ -326,6 +326,7 @@ class FaceCheckApiTest {
         assertContains(body, "arcface-w600k-mbf-r1")
         listOf("front_initial", "turn_first", "center_between", "turn_second", "front_final")
             .forEachIndexed { index, role ->
+                assertContains(body, "name=\"evidence_$index\"")
                 assertContains(body, "filename=\"evidence_$index.jpg\"")
                 assertContains(body, role)
             }

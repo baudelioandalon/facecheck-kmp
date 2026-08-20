@@ -443,7 +443,7 @@ private fun FormBuilder.appendImage(field: String, bytes: ByteArray, filename: S
         value = bytes,
         headers = Headers.build {
             append(HttpHeaders.ContentType, "image/jpeg")
-            append(HttpHeaders.ContentDisposition, "filename=\"$filename\"")
+            append(HttpHeaders.ContentDisposition, "form-data; name=\"$field\"; filename=\"$filename\"")
         },
     )
 }
