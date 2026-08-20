@@ -296,6 +296,7 @@ class FaceCheckApiTest {
         assertContains(checkNotNull(request).body.contentType.toString(), "application/json")
         assertContains(body, """"operation":"enroll"""")
         assertContains(body, """"subjectId":"person_demo_01"""")
+        assertContains(body, """"sdk":{"platform":"kmp","version":"1.0.0"}""")
         assertContains(body, """"requestedModelProfileId":"arcface-w600k-mbf-r1"""")
         assertContains(body, """"latitude":19.4326""")
         assertEquals("ls_abcdefghijklmnopqrst", descriptor.sessionId)

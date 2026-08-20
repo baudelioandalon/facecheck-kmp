@@ -165,7 +165,7 @@ internal class FaceCheckApi(
             operation = normalizedOperation,
             subjectId = subjectId,
             protocolVersion = ACTIVE_LIVENESS_PROTOCOL,
-            sdk = SDK_ID,
+            sdk = SdkDescriptor(platform = SDK_PLATFORM, version = SDK_VERSION),
             locationContext = location,
             requestedModelProfileId = requestedModelProfileId?.takeIf { it.isNotBlank() },
         )
@@ -376,18 +376,25 @@ internal class FaceCheckApi(
         const val VERIFY_PATH = "verify"
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
-        const val SDK_ID = "facecheck-kmp"
+        const val SDK_PLATFORM = "kmp"
+        const val SDK_VERSION = "1.0.0"
         const val HTTP_SERVER_ERROR = 500
         const val MAX_BACKOFF_MS = 8_000L
     }
 }
 
 @Serializable
+private data class SdkDescriptor(
+    val platform: String,
+    val version: String,
+)
+
+@Serializable
 private data class LivenessSessionRequest(
     val operation: String,
     val subjectId: String,
     val protocolVersion: String,
-    val sdk: String,
+    val sdk: SdkDescriptor,
     val locationContext: LocationContext,
     val requestedModelProfileId: String? = null,
 )
