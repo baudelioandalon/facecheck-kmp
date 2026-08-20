@@ -8,11 +8,11 @@ import kotlin.test.assertNull
 class ImmersiveSampleFlowTest {
 
     @Test
-    fun `generated subject ID starts enrollment capture`() {
+    fun `generated subject ID starts enrollment preflight`() {
         assertEquals(
-            ImmersiveScreen.Capture(
-                SampleOperation.ENROLL,
-                "sub_ABCDEFGHJK_abcdefghijklmnopqrstuv",
+            ImmersiveScreen.CameraPreflight(
+                operation = SampleOperation.ENROLL,
+                subjectId = "sub_ABCDEFGHJK_abcdefghijklmnopqrstuv",
             ),
             ImmersiveSampleFlow.begin(
                 SampleOperation.ENROLL,
@@ -22,9 +22,9 @@ class ImmersiveSampleFlowTest {
     }
 
     @Test
-    fun `verification begins with a preflight instead of a live session`() {
+    fun `verification begins with the shared preflight instead of a live session`() {
         assertEquals(
-            ImmersiveScreen.VerificationPreflight("Person_01"),
+            ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, "Person_01"),
             ImmersiveSampleFlow.begin(SampleOperation.VERIFY, " Person_01 "),
         )
     }

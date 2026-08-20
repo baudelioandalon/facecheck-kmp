@@ -1,5 +1,7 @@
 package com.borealnetwork.facecheck.sample
 
+import com.borealnetwork.facecheck.model.ModelProfileSummary
+
 private val sampleSubjectIdPattern = Regex("^[A-Za-z][A-Za-z0-9_-]{7,127}$")
 
 internal enum class SampleOperation {
@@ -20,12 +22,17 @@ internal sealed interface ImmersiveScreen {
 
     data object VerificationDirectory : ImmersiveScreen
 
-    /** Camera-only alignment before the user explicitly starts verification. */
-    data class VerificationPreflight(val subjectId: String) : ImmersiveScreen
+    /** Camera-only alignment before the user explicitly starts a backend session. */
+    data class CameraPreflight(
+        val operation: SampleOperation,
+        val subjectId: String,
+        val enrollmentProfile: ModelProfileSummary? = null,
+    ) : ImmersiveScreen
 
     data class Capture(
         val operation: SampleOperation,
         val subjectId: String,
+        val enrollmentProfile: ModelProfileSummary? = null,
     ) : ImmersiveScreen
 
     data class Outcome(
@@ -36,13 +43,14 @@ internal sealed interface ImmersiveScreen {
 }
 
 internal object ImmersiveSampleFlow {
-    fun begin(operation: SampleOperation, subjectId: String): ImmersiveScreen {
+    fun begin(
+        operation: SampleOperation,
+        subjectId: String,
+        enrollmentProfile: ModelProfileSummary? = null,
+    ): ImmersiveScreen {
         val normalized = subjectId.trim()
         return if (sampleSubjectIdPattern.matches(normalized)) {
-            when (operation) {
-                SampleOperation.ENROLL -> ImmersiveScreen.Capture(operation, normalized)
-                SampleOperation.VERIFY -> ImmersiveScreen.VerificationPreflight(normalized)
-            }
+            ImmersiveScreen.CameraPreflight(operation, normalized, enrollmentProfile)
         } else {
             ImmersiveScreen.SubjectSetup(operation, "Escribe un ID de persona válido.", normalized)
         }

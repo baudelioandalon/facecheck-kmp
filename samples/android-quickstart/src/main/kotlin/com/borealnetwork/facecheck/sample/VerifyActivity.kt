@@ -30,10 +30,12 @@ import com.borealnetwork.facecheck.FaceCheck
 import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.camera.AndroidCameraController
 import com.borealnetwork.facecheck.camera.CameraHost
-import com.borealnetwork.facecheck.liveness.ChallengeMachine
+import com.borealnetwork.facecheck.liveness.ActiveLivenessState
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.ModelProfileSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -106,7 +108,7 @@ class VerifyActivity : ComponentActivity() {
                 subjectId = screen.subjectId,
             )
             ImmersiveScreen.VerificationDirectory -> renderVerificationDirectory()
-            is ImmersiveScreen.VerificationPreflight -> Unit
+            is ImmersiveScreen.CameraPreflight -> Unit
             is ImmersiveScreen.Outcome -> renderOutcome(screen)
             is ImmersiveScreen.Capture -> Unit
         }
@@ -196,6 +198,22 @@ class VerifyActivity : ComponentActivity() {
         }
         column.addView(subjectIdInput, fullWidth())
 
+        var selectedProfile: ModelProfileSummary? = null
+        val profileStatus = TextView(this).apply {
+            textSize = 15f
+            setTextColor(Color.rgb(72, 84, 99))
+            setPadding(0, 14, 0, 0)
+            text = if (operation == SampleOperation.ENROLL) {
+                "Cargando modelos permitidos…"
+            } else {
+                "La verificación usará el modelo guardado con esta persona."
+            }
+        }
+        if (operation == SampleOperation.ENROLL) {
+            column.addView(sectionTitle("Modelo de backend"))
+            column.addView(profileStatus)
+        }
+
         addSpace(column, 24)
         column.addView(secondaryButton("Generar ID aleatorio") {
             renderSubjectSetup(
@@ -204,9 +222,13 @@ class VerifyActivity : ComponentActivity() {
             )
         })
         addSpace(column, 12)
-        column.addView(primaryButton("Continuar a la cámara") {
+        val continueButton = primaryButton("Continuar a la cámara") {
             when (val next = ImmersiveSampleFlow.begin(operation, subjectIdInput.text.toString())) {
-                is ImmersiveScreen.Capture -> renderCapture(next)
+                is ImmersiveScreen.CameraPreflight -> {
+                    val profile = selectedProfile
+                    if (operation == SampleOperation.ENROLL && profile == null) return@primaryButton
+                    renderCameraPreflight(next.copy(enrollmentProfile = profile))
+                }
                 is ImmersiveScreen.SubjectSetup -> renderSubjectSetup(
                     operation = operation,
                     validationMessage = next.validationMessage,
@@ -214,10 +236,38 @@ class VerifyActivity : ComponentActivity() {
                 )
                 else -> Unit
             }
-        })
+        }.apply {
+            isEnabled = operation != SampleOperation.ENROLL
+        }
+        column.addView(continueButton)
         addSpace(column, 12)
         column.addView(secondaryButton("Volver") { renderHome() })
         installColumn(column)
+
+        if (operation == SampleOperation.ENROLL) {
+            lifecycleScope.launch {
+                runCatching { FaceCheck.enrollmentModelProfiles() }
+                    .onSuccess { catalog ->
+                        val profile = ModelProfileSelection.selectDefault(catalog)
+                        selectedProfile = profile
+                        if (profile == null) {
+                            profileStatus.text =
+                                "No hay modelos disponibles para este ambiente. En producción solo se muestran modelos comercialmente autorizados."
+                            profileStatus.setTextColor(Color.rgb(177, 39, 39))
+                            continueButton.isEnabled = false
+                        } else {
+                            profileStatus.text = ModelProfileSelection.label(profile)
+                            profileStatus.setTextColor(Color.rgb(72, 84, 99))
+                            continueButton.isEnabled = true
+                        }
+                    }
+                    .onFailure { error ->
+                        profileStatus.text = "No pudimos cargar los modelos: ${error.message}"
+                        profileStatus.setTextColor(Color.rgb(177, 39, 39))
+                        continueButton.isEnabled = false
+                    }
+            }
+        }
     }
 
     private fun openVerificationDirectory() {
@@ -244,7 +294,9 @@ class VerifyActivity : ComponentActivity() {
             subjects.forEach { subjectId ->
                 addSpace(column, 8)
                 column.addView(secondaryButton(subjectId) {
-                    renderVerificationPreflight(subjectId)
+                    renderCameraPreflight(
+                        ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, subjectId),
+                    )
                 })
             }
         }
@@ -338,35 +390,61 @@ class VerifyActivity : ComponentActivity() {
         val previewFaceGuide = PreviewFaceGuide(guideGeometry::contains)
         controller.setPreviewFaceGuide(previewFaceGuide::contains)
         camera = controller
-        val machine = newChallengeMachine(screen.operation)
         val challengeFeedback = ChallengeCompletionFeedback()
-        challengeJob = observeChallenge(
-            machine = machine,
-            sessionId = sessionId,
-            operation = screen.operation,
-            overlay = overlay,
-            step = step,
-            instruction = instruction,
-            progress = progress,
-            cancelButton = cancelButton,
-            loading = loading,
-            challengeFeedback = challengeFeedback,
-        )
         captureJob = lifecycleScope.launch {
             var enrollmentFailed = false
             var outcome: ImmersiveScreen.Outcome? = null
             try {
+                instruction.text = "Creando sesión segura…"
+                loading.visibility = View.VISIBLE
+                val location = CurrentLocationProvider(this@VerifyActivity).current()
                 val succeeded = when (screen.operation) {
-                    SampleOperation.ENROLL -> FaceCheck.enroll(
-                        subjectId = screen.subjectId,
-                        camera = controller,
-                        machine = machine,
-                    ).enrolled
-                    SampleOperation.VERIFY -> FaceCheck.verify(
-                        subjectId = screen.subjectId,
-                        camera = controller,
-                        machine = machine,
-                    ).verified
+                    SampleOperation.ENROLL -> {
+                        val profile = checkNotNull(screen.enrollmentProfile) {
+                            "enrollment profile is required before capture"
+                        }
+                        val session = FaceCheck.prepareEnrollment(
+                            subjectId = screen.subjectId,
+                            modelProfileId = profile.id,
+                            location = location,
+                        )
+                        challengeJob = observeActiveSession(
+                            sessionState = session.state,
+                            sessionId = sessionId,
+                            operation = screen.operation,
+                            overlay = overlay,
+                            step = step,
+                            instruction = instruction,
+                            progress = progress,
+                            cancelButton = cancelButton,
+                            loading = loading,
+                            challengeFeedback = challengeFeedback,
+                        )
+                        session.run(
+                            camera = controller,
+                        ).enrolled
+                    }
+                    SampleOperation.VERIFY -> {
+                        val session = FaceCheck.prepareVerification(
+                            subjectId = screen.subjectId,
+                            location = location,
+                        )
+                        challengeJob = observeActiveSession(
+                            sessionState = session.state,
+                            sessionId = sessionId,
+                            operation = screen.operation,
+                            overlay = overlay,
+                            step = step,
+                            instruction = instruction,
+                            progress = progress,
+                            cancelButton = cancelButton,
+                            loading = loading,
+                            challengeFeedback = challengeFeedback,
+                        )
+                        session.run(
+                            camera = controller,
+                        ).verified
+                    }
                 }
                 if (succeeded && screen.operation == SampleOperation.ENROLL) {
                     rememberSubject(screen.subjectId)
@@ -408,12 +486,12 @@ class VerifyActivity : ComponentActivity() {
         }
     }
 
-    private fun renderVerificationPreflight(subjectId: String) {
+    private fun renderCameraPreflight(screen: ImmersiveScreen.CameraPreflight) {
         blockingMessage()?.let {
             renderPermissionGate(it)
             return
         }
-        currentScreen = ImmersiveScreen.VerificationPreflight(subjectId)
+        currentScreen = screen
         busy = true
         val sessionId = ++activeCaptureId
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
@@ -468,11 +546,19 @@ class VerifyActivity : ComponentActivity() {
             setPadding(0, 24, 0, 0)
         }
         var verificationReady = false
-        val startButton = primaryButton("Empezar verificación") {
+        val startButton = primaryButton(
+            if (screen.operation == SampleOperation.ENROLL) "Empezar enrolamiento" else "Empezar verificación",
+        ) {
             if (sessionId != activeCaptureId || !verificationReady) return@primaryButton
             activeCaptureId += 1
             releaseCamera()
-            renderCapture(ImmersiveScreen.Capture(SampleOperation.VERIFY, subjectId))
+            renderCapture(
+                ImmersiveScreen.Capture(
+                    operation = screen.operation,
+                    subjectId = screen.subjectId,
+                    enrollmentProfile = screen.enrollmentProfile,
+                ),
+            )
         }.apply { isEnabled = false }
         guidance.addView(step)
         guidance.addView(instruction)
@@ -485,7 +571,7 @@ class VerifyActivity : ComponentActivity() {
         controller.attachPreview(preview)
         controller.setPreviewFaceGuide(PreviewFaceGuide(guideGeometry::contains)::contains)
         camera = controller
-        val readiness = VerificationPreflightReadiness()
+        val readiness = CameraPreflightReadiness()
         controller.start()
         preflightJob = lifecycleScope.launch {
             try {
@@ -509,8 +595,8 @@ class VerifyActivity : ComponentActivity() {
         }
     }
 
-    private fun observeChallenge(
-        machine: ChallengeMachine,
+    private fun observeActiveSession(
+        sessionState: StateFlow<ActiveLivenessState>,
         sessionId: Long,
         operation: SampleOperation,
         overlay: FaceGuideOverlay,
@@ -521,16 +607,42 @@ class VerifyActivity : ComponentActivity() {
         loading: View,
         challengeFeedback: ChallengeCompletionFeedback,
     ): Job = lifecycleScope.launch {
-        machine.state.collect { state ->
+        sessionState.collect { activeState ->
             if (sessionId == activeCaptureId) {
-                val presentation = CapturePresentation.from(
-                    state = state,
-                    finalizingInstruction = if (operation == SampleOperation.ENROLL) {
-                        "Guardando enrolamiento…"
-                    } else {
-                        "Verificando identidad…"
-                    },
-                )
+                val finalizingInstruction = if (operation == SampleOperation.ENROLL) {
+                    "Guardando enrolamiento…"
+                } else {
+                    "Verificando identidad…"
+                }
+                val presentation = when (activeState) {
+                    is ActiveLivenessState.Capturing -> CapturePresentation.from(
+                        state = activeState.presentation,
+                        finalizingInstruction = finalizingInstruction,
+                    )
+                    ActiveLivenessState.Uploading,
+                    ActiveLivenessState.Processing,
+                    ActiveLivenessState.Completed -> CapturePresentation(
+                        instruction = finalizingInstruction,
+                        stepLabel = "Pasos completados",
+                        progress = 1f,
+                        isFinalizing = true,
+                    )
+                    ActiveLivenessState.Ready -> CapturePresentation(
+                        instruction = "Preparando sesión segura…",
+                        stepLabel = "Preparando",
+                        progress = 0f,
+                    )
+                    ActiveLivenessState.Cancelled -> CapturePresentation(
+                        instruction = "Cancelado",
+                        stepLabel = "Sesión cancelada",
+                        progress = 0f,
+                    )
+                    is ActiveLivenessState.Failed -> CapturePresentation(
+                        instruction = activeState.error.message,
+                        stepLabel = "No fue posible completar la sesión",
+                        progress = 0f,
+                    )
+                }
                 overlay.render(presentation)
                 step.text = presentation.stepLabel
                 instruction.text = presentation.instruction
@@ -538,7 +650,8 @@ class VerifyActivity : ComponentActivity() {
                 if (!presentation.isFinalizing) progress.progress = (presentation.ringProgress * 100).toInt()
                 loading.visibility = if (presentation.isFinalizing) View.VISIBLE else View.GONE
                 cancelButton.visibility = if (presentation.isFinalizing) View.INVISIBLE else View.VISIBLE
-                if (challengeFeedback.consume(state)) {
+                val livenessState = (activeState as? ActiveLivenessState.Capturing)?.presentation
+                if (livenessState != null && challengeFeedback.consume(livenessState)) {
                     overlay.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     overlay.playSoundEffect(SoundEffectConstants.CLICK)
                 }
@@ -553,14 +666,6 @@ class VerifyActivity : ComponentActivity() {
         releaseCamera()
         busy = false
         renderHome()
-    }
-
-    private fun newChallengeMachine(operation: SampleOperation): ChallengeMachine = when (operation) {
-        SampleOperation.ENROLL -> ChallengeMachine(
-            challenges = EnrollmentSessionPolicy.challenges,
-            config = EnrollmentSessionPolicy.livenessConfig,
-        )
-        SampleOperation.VERIFY -> FaceCheck.newChallengeMachine()
     }
 
     private fun loadingOverlay(operation: SampleOperation): View = LinearLayout(this).apply {
