@@ -30,6 +30,18 @@ class ImmersiveSampleFlowTest {
     }
 
     @Test
+    fun `camera preflight is blocked until required permissions are accepted`() {
+        assertEquals(
+            ImmersiveScreen.PermissionGate("Acepta cámara, almacenamiento y ubicación antes de iniciar."),
+            ImmersiveSampleFlow.beginAfterPreconditions(
+                operation = SampleOperation.ENROLL,
+                subjectId = "Person_01",
+                blockingMessage = "Acepta cámara, almacenamiento y ubicación antes de iniciar.",
+            ),
+        )
+    }
+
+    @Test
     fun `invalid subject ID stays in setup with guidance`() {
         assertEquals(
             ImmersiveScreen.SubjectSetup(

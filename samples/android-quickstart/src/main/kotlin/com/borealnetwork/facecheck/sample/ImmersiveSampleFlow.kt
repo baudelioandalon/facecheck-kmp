@@ -43,6 +43,15 @@ internal sealed interface ImmersiveScreen {
 }
 
 internal object ImmersiveSampleFlow {
+    fun beginAfterPreconditions(
+        operation: SampleOperation,
+        subjectId: String,
+        blockingMessage: String?,
+        enrollmentProfile: ModelProfileSummary? = null,
+    ): ImmersiveScreen =
+        blockingMessage?.let(ImmersiveScreen::PermissionGate)
+            ?: begin(operation, subjectId, enrollmentProfile)
+
     fun begin(
         operation: SampleOperation,
         subjectId: String,
