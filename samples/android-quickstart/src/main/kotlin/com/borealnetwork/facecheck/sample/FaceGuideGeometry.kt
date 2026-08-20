@@ -37,17 +37,24 @@ internal class FaceGuideGeometry {
     fun ovalBounds(): RectF? = oval?.let { RectF(it.left, it.top, it.right, it.bottom) }
 
     /**
-     * True only when every corner of [mappedFaceBounds] is strictly inside the oval.
+     * True when [mappedFaceBounds] is visually centered inside the oval.
      *
-     * Strict containment deliberately rejects a face that touches the visible
-     * border: the person must leave a little margin rather than appear clipped.
+     * ML Kit reports a rectangular bounding box around an organic oval-ish
+     * face. Requiring all four rectangle corners to fit inside the guide rejects
+     * a real face that looks correctly centered to the user, especially near the
+     * forehead and jaw. The center plus the four cardinal midpoints match the
+     * visible guide better: the user still cannot leave the oval horizontally or
+     * vertically, but natural detector corners no longer block progress.
      */
     fun contains(mappedFaceBounds: RectF): Boolean {
         val current = oval ?: return false
-        return current.contains(mappedFaceBounds.left, mappedFaceBounds.top) &&
-            current.contains(mappedFaceBounds.right, mappedFaceBounds.top) &&
-            current.contains(mappedFaceBounds.left, mappedFaceBounds.bottom) &&
-            current.contains(mappedFaceBounds.right, mappedFaceBounds.bottom)
+        val centerX = (mappedFaceBounds.left + mappedFaceBounds.right) / 2f
+        val centerY = (mappedFaceBounds.top + mappedFaceBounds.bottom) / 2f
+        return current.contains(centerX, centerY) &&
+            current.contains(mappedFaceBounds.left, centerY) &&
+            current.contains(mappedFaceBounds.right, centerY) &&
+            current.contains(centerX, mappedFaceBounds.top) &&
+            current.contains(centerX, mappedFaceBounds.bottom)
     }
 
     private data class Oval(

@@ -10,10 +10,11 @@ internal class CameraPreflightReadiness(
     private var stableSinceMs: Long? = null
 
     fun onFrame(frame: FaceFrame): State {
-        if (!frame.hasSingleFace || !frame.insideGuide || !frame.isFrontalEnough()) {
+        val blockingInstruction = frame.blockingInstruction()
+        if (blockingInstruction != null) {
             stableSinceMs = null
             return State(
-                instruction = "Coloca tu rostro completo dentro del óvalo",
+                instruction = blockingInstruction,
                 progress = 0f,
                 isReady = false,
                 remainingSeconds = ceil(requiredHoldMs / 1_000.0).toInt(),
@@ -48,6 +49,14 @@ internal class CameraPreflightReadiness(
 
     private fun FaceFrame.isFrontalEnough(): Boolean =
         kotlin.math.abs(yaw) <= MAX_FRONTAL_YAW && kotlin.math.abs(pitch) <= MAX_FRONTAL_PITCH
+
+    private fun FaceFrame.blockingInstruction(): String? = when {
+        faceCount == 0 -> "Coloca tu rostro dentro del óvalo"
+        faceCount > 1 -> "Solo debe aparecer una persona"
+        !insideGuide -> "Centra tu rostro completo dentro del óvalo"
+        !isFrontalEnough() -> "Mira al frente sin inclinar la cabeza"
+        else -> null
+    }
 
     private companion object {
         const val STABLE_HOLD_MS = 3_000L

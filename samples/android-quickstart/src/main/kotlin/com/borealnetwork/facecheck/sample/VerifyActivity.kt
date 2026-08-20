@@ -142,7 +142,7 @@ class VerifyActivity : ComponentActivity() {
                 })
             }
         } else {
-            column.addView(status("Permisos aceptados. La ubicación se usa solo como requisito local; no enviamos coordenadas.", Color.rgb(23, 108, 60)))
+            column.addView(status("Permisos aceptados. La ubicación se envía al servidor como señal de seguridad al iniciar sesión.", Color.rgb(23, 108, 60)))
             addSpace(column, 16)
             column.addView(primaryButton("Enrolar una persona") { openSubjectSetup(SampleOperation.ENROLL) })
             addSpace(column, 12)
@@ -339,13 +339,7 @@ class VerifyActivity : ComponentActivity() {
         )
 
         val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
-        frame.addView(
-            cancelButton,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
-                topMargin = 36
-                marginEnd = 28
-            },
-        )
+        addCameraTopActions(frame, overlay, cancelButton)
 
         val guidance = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -528,13 +522,7 @@ class VerifyActivity : ComponentActivity() {
             },
         )
         val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
-        frame.addView(
-            cancelButton,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
-                topMargin = 36
-                marginEnd = 28
-            },
-        )
+        addCameraTopActions(frame, overlay, cancelButton)
 
         val guidance = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -948,6 +936,73 @@ class VerifyActivity : ComponentActivity() {
                 setStroke(1, Color.argb(100, Color.red(accent), Color.green(accent), Color.blue(accent)))
             }
         }
+    }
+
+    private fun addCameraTopActions(
+        frame: FrameLayout,
+        overlay: FaceGuideOverlay,
+        cancelButton: Button,
+    ) {
+        var lighting = FaceGuideLighting.Normal
+        lateinit var flashButton: Button
+
+        fun applyLighting() {
+            overlay.setLighting(lighting)
+            flashButton.text = lighting.buttonLabel
+            flashButton.contentDescription = lighting.contentDescription
+            val accent = if (lighting.requiresDarkButtonText) Color.rgb(22, 28, 34) else Color.rgb(155, 237, 203)
+            flashButton.setTextColor(accent)
+            flashButton.backgroundTintList = ColorStateList.valueOf(
+                if (lighting == FaceGuideLighting.LowLight) {
+                    Color.argb(220, 255, 255, 255)
+                } else {
+                    Color.argb(32, 117, 224, 184)
+                },
+            )
+        }
+
+        flashButton = secondaryButton(lighting.buttonLabel) {
+            lighting = lighting.toggle()
+            applyLighting()
+        }.apply {
+            textSize = 22f
+            minWidth = 128
+            minimumWidth = 128
+            setPadding(24, 0, 24, 0)
+        }
+        applyLighting()
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                flashButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                cancelButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    marginStart = 12
+                },
+            )
+        }
+        frame.addView(
+            row,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END,
+            ).apply {
+                topMargin = 36
+                marginEnd = 28
+            },
+        )
     }
 
     private fun primaryButton(label: String, action: () -> Unit): Button = Button(this).apply {

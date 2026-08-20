@@ -24,8 +24,8 @@ class FaceGuideGeometryTest {
     }
 
     @Test
-    fun `face centered in the oval fails when a corner escapes it`() {
-        assertFalse(guide.contains(rect(left = 250f, top = 300f, right = 750f, bottom = 1_184f)))
+    fun `face centered in the oval passes even when rectangular detector corners escape it`() {
+        assertTrue(guide.contains(rect(left = 250f, top = 300f, right = 750f, bottom = 1_184f)))
     }
 
     @Test

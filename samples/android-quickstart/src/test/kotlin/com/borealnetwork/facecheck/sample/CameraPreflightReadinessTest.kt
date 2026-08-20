@@ -34,10 +34,31 @@ class CameraPreflightReadinessTest {
         assertFalse(readiness.onFrame(goodFrame(atMs = 3_000, yaw = 18f)).isReady)
     }
 
+    @Test
+    fun `outside guide explains that the face must be centered`() {
+        val readiness = CameraPreflightReadiness(requiredHoldMs = 3_000)
+
+        val state = readiness.onFrame(goodFrame(atMs = 0, insideGuide = false))
+
+        assertFalse(state.isReady)
+        assertTrue(state.instruction.contains("Centra"))
+    }
+
+    @Test
+    fun `non frontal face asks the user to look straight ahead`() {
+        val readiness = CameraPreflightReadiness(requiredHoldMs = 3_000)
+
+        val state = readiness.onFrame(goodFrame(atMs = 0, yaw = 18f))
+
+        assertFalse(state.isReady)
+        assertTrue(state.instruction.contains("Mira al frente"))
+    }
+
     private fun goodFrame(
         atMs: Long,
         insideGuide: Boolean = true,
         yaw: Float = 0f,
+        faceCount: Int = 1,
     ): FaceFrame = FaceFrame(
         yaw = yaw,
         pitch = 0f,
@@ -47,6 +68,7 @@ class CameraPreflightReadinessTest {
         faceRatio = .5f,
         trackingId = 1,
         timestampMs = atMs,
+        faceCount = faceCount,
         insideGuide = insideGuide,
     )
 }
