@@ -5,6 +5,7 @@ import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.LocationContext
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.MockRequestHandler
@@ -20,6 +21,7 @@ import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.Instant
 import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.test.Test
@@ -35,6 +37,18 @@ private const val BASE_URL = "https://facecheck.example.com"
 
 private val SELFIE = "fake-jpeg-selfie".encodeToByteArray()
 private val INE = "fake-jpeg-ine".encodeToByteArray()
+private val FRONT_INITIAL = "front-initial-jpeg".encodeToByteArray()
+private val TURN_FIRST = "turn-first-jpeg".encodeToByteArray()
+private val CENTER_BETWEEN = "center-between-jpeg".encodeToByteArray()
+private val TURN_SECOND = "turn-second-jpeg".encodeToByteArray()
+private val FRONT_FINAL = "front-final-jpeg".encodeToByteArray()
+
+private val FRESH_LOCATION = LocationContext(
+    latitude = 19.4326,
+    longitude = -99.1332,
+    accuracyMeters = 35.0,
+    capturedAt = Instant.parse("2026-08-14T12:00:00Z"),
+)
 
 private const val ENROLL_BODY = """
 {
@@ -68,6 +82,43 @@ private const val VERIFY_BODY = """
   "spoofScore": null,
   "faceQuality": null,
   "verificationId": "vrf_123"
+}
+"""
+
+private const val MODEL_PROFILES_BODY = """
+{
+  "defaultProfileId": "arcface-w600k-mbf-r1",
+  "profiles": [
+    {
+      "id": "arcface-w600k-mbf-r1",
+      "rank": 1,
+      "displayName": "ArcFace Mobile · Recomendado",
+      "availability": "test",
+      "badge": "Experimental",
+      "artifactBytes": 13616099,
+      "passivePadArtifactBytes": null,
+      "totalArtifactBytes": 13616099
+    }
+  ]
+}
+"""
+
+private const val LIVENESS_SESSION_BODY = """
+{
+  "sessionId": "ls_abcdefghijklmnopqrst",
+  "expiresAt": "2026-08-14T12:02:00Z",
+  "modelProfile": {
+    "id": "arcface-w600k-mbf-r1",
+    "displayName": "ArcFace Mobile · Recomendado",
+    "rank": 1
+  },
+  "protocolVersion": "active-liveness-v1",
+  "challengePlan": ["turn_left", "turn_right"],
+  "capturePolicy": {
+    "visibleSteps": 3,
+    "maxEvidenceImages": 5,
+    "sessionTimeoutSeconds": 120
+  }
 }
 """
 
@@ -202,6 +253,82 @@ class FaceCheckApiTest {
 
         assertContains(body, "compareWith")
         assertContains(body, "both")
+    }
+
+    @Test
+    fun catalog_parses_exact_backend_artifact_bytes() = runTest {
+        var seen: HttpRequestData? = null
+        val api = api {
+            seen = it
+            respondJson(MODEL_PROFILES_BODY)
+        }
+
+        val catalog = api.getEnrollmentModelProfiles()
+
+        assertEquals(HttpMethod.Get, checkNotNull(seen).method)
+        assertEquals("$BASE_URL/modelProfiles?operation=enroll", checkNotNull(seen).url.toString())
+        assertEquals(TEST_KEY, checkNotNull(seen).headers["X-Api-Key"])
+        assertEquals("arcface-w600k-mbf-r1", catalog.defaultProfileId)
+        assertEquals(13_616_099L, catalog.profiles.single().recognizerArtifactBytes)
+        assertEquals(13_616_099L, catalog.profiles.single().totalArtifactBytes)
+    }
+
+    @Test
+    fun liveness_session_creation_sends_location_profile_and_subject() = runTest {
+        var request: HttpRequestData? = null
+        var body = ""
+        val api = api {
+            request = it
+            body = it.body.readAsText()
+            respondJson(LIVENESS_SESSION_BODY)
+        }
+
+        val descriptor = api.createLivenessSession(
+            operation = "enroll",
+            subjectId = "person_demo_01",
+            requestedModelProfileId = "arcface-w600k-mbf-r1",
+            location = FRESH_LOCATION,
+        )
+
+        assertEquals(HttpMethod.Post, checkNotNull(request).method)
+        assertEquals("$BASE_URL/livenessSessions", checkNotNull(request).url.toString())
+        assertEquals(TEST_KEY, checkNotNull(request).headers["X-Api-Key"])
+        assertContains(checkNotNull(request).body.contentType.toString(), "application/json")
+        assertContains(body, """"operation":"enroll"""")
+        assertContains(body, """"subjectId":"person_demo_01"""")
+        assertContains(body, """"requestedModelProfileId":"arcface-w600k-mbf-r1"""")
+        assertContains(body, """"latitude":19.4326""")
+        assertEquals("ls_abcdefghijklmnopqrst", descriptor.sessionId)
+        assertEquals(listOf("turn_left", "turn_right"), descriptor.challengePlan.map { it.wire })
+        assertEquals(3, descriptor.capturePolicy.visibleSteps)
+    }
+
+    @Test
+    fun enroll_sends_session_profile_manifest_and_five_evidence_files() = runTest {
+        var body = ""
+        val api = api {
+            body = it.body.readAsText()
+            respondJson("""{"enrolled":true,"subjectId":"test_9f86d081"}""")
+        }
+
+        api.enroll(
+            session = livenessDescriptor(),
+            evidence = evidenceBundle(),
+            grant = null,
+            overwrite = false,
+            ine = null,
+        )
+
+        assertContains(body, "livenessSessionId")
+        assertContains(body, "ls_abcdefghijklmnopqrst")
+        assertContains(body, "modelProfileId")
+        assertContains(body, "arcface-w600k-mbf-r1")
+        listOf("front_initial", "turn_first", "center_between", "turn_second", "front_final")
+            .forEachIndexed { index, role ->
+                assertContains(body, "filename=\"evidence_$index.jpg\"")
+                assertContains(body, role)
+            }
+        assertFalse(body.contains("filename=\"selfie.jpg\""), "legacy selfie part: $body")
     }
 
     // --- Errors ---------------------------------------------------------------
@@ -357,6 +484,53 @@ class FaceCheckApiTest {
         assertEquals(1, attempts)
     }
 }
+
+private fun livenessDescriptor() = com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor(
+    sessionId = "ls_abcdefghijklmnopqrst",
+    subjectId = "person_demo_01",
+    operation = "enroll",
+    expiresAt = Instant.parse("2026-08-14T12:02:00Z"),
+    modelProfile = com.borealnetwork.facecheck.model.SessionModelProfile(
+        id = "arcface-w600k-mbf-r1",
+        displayName = "ArcFace Mobile · Recomendado",
+        rank = 1,
+    ),
+    protocolVersion = "active-liveness-v1",
+    challengePlan = listOf(
+        com.borealnetwork.facecheck.liveness.ServerChallenge.TURN_LEFT,
+        com.borealnetwork.facecheck.liveness.ServerChallenge.TURN_RIGHT,
+    ),
+    capturePolicy = com.borealnetwork.facecheck.liveness.CapturePolicy(
+        visibleSteps = 3,
+        maxEvidenceImages = 5,
+        sessionTimeoutSeconds = 120,
+    ),
+)
+
+private fun evidenceBundle() = com.borealnetwork.facecheck.liveness.CapturedEvidenceBundle(
+    images = listOf(
+        com.borealnetwork.facecheck.liveness.CapturedEvidence(
+            com.borealnetwork.facecheck.liveness.EvidenceRole.FRONT_INITIAL,
+            FRONT_INITIAL,
+        ),
+        com.borealnetwork.facecheck.liveness.CapturedEvidence(
+            com.borealnetwork.facecheck.liveness.EvidenceRole.TURN_FIRST,
+            TURN_FIRST,
+        ),
+        com.borealnetwork.facecheck.liveness.CapturedEvidence(
+            com.borealnetwork.facecheck.liveness.EvidenceRole.CENTER_BETWEEN,
+            CENTER_BETWEEN,
+        ),
+        com.borealnetwork.facecheck.liveness.CapturedEvidence(
+            com.borealnetwork.facecheck.liveness.EvidenceRole.TURN_SECOND,
+            TURN_SECOND,
+        ),
+        com.borealnetwork.facecheck.liveness.CapturedEvidence(
+            com.borealnetwork.facecheck.liveness.EvidenceRole.FRONT_FINAL,
+            FRONT_FINAL,
+        ),
+    ),
+)
 
 private fun MockRequestHandleScope.respondJson(
     body: String,

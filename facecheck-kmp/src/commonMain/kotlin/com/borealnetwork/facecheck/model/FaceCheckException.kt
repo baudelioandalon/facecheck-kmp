@@ -154,6 +154,68 @@ enum class FaceCheckErrorCode(
         "Esta persona no tiene una identificación registrada.",
     ),
 
+    // --- Active Liveness sessions and model profiles -------------------------
+    MODEL_PROFILE_NOT_ALLOWED(
+        "MODEL_PROFILE_NOT_ALLOWED",
+        "Ese modelo no está permitido para esta aplicación.",
+    ),
+    MODEL_PROFILE_UNAVAILABLE(
+        "MODEL_PROFILE_UNAVAILABLE",
+        "El modelo seleccionado no está disponible en este momento.",
+        isRetryable = true,
+    ),
+    MODEL_PROFILE_MISMATCH(
+        "MODEL_PROFILE_MISMATCH",
+        "La sesión no corresponde al modelo de este registro facial.",
+    ),
+    LOCATION_REQUIRED(
+        "LOCATION_REQUIRED",
+        "Se requiere ubicación para iniciar la verificación.",
+    ),
+    LOCATION_STALE(
+        "LOCATION_STALE",
+        "La ubicación ya no está fresca. Vuelve a intentar.",
+        isRetryable = true,
+    ),
+    MISSING_LIVENESS_SESSION(
+        "MISSING_LIVENESS_SESSION",
+        "Falta la sesión de liveness. Vuelve a iniciar la captura.",
+    ),
+    LIVENESS_SESSION_EXPIRED(
+        "LIVENESS_SESSION_EXPIRED",
+        "La sesión expiró. Vuelve a empezar.",
+        isRetryable = true,
+    ),
+    LIVENESS_SESSION_MISMATCH(
+        "LIVENESS_SESSION_MISMATCH",
+        "La sesión no coincide con esta solicitud.",
+    ),
+    LIVENESS_SESSION_CONSUMED(
+        "LIVENESS_SESSION_CONSUMED",
+        "Esta sesión ya fue utilizada. Crea una nueva e intenta de nuevo.",
+    ),
+    LIVENESS_EVIDENCE_INVALID(
+        "LIVENESS_EVIDENCE_INVALID",
+        "No pudimos validar las capturas de vida. Vuelve a intentarlo.",
+    ),
+    LIVENESS_FACE_CHANGED(
+        "LIVENESS_FACE_CHANGED",
+        "Detectamos un cambio de rostro durante la sesión. Vuelve a empezar.",
+    ),
+    LIVENESS_CHALLENGE_FAILED(
+        "LIVENESS_CHALLENGE_FAILED",
+        "No se completaron correctamente los movimientos solicitados.",
+    ),
+    LIVENESS_REPLAY_DETECTED(
+        "LIVENESS_REPLAY_DETECTED",
+        "Estas capturas ya fueron usadas. Inicia una sesión nueva.",
+    ),
+    LIVENESS_PROCESSING(
+        "LIVENESS_PROCESSING",
+        "La sesión aún se está procesando. Intenta de nuevo en unos segundos.",
+        isRetryable = true,
+    ),
+
     // --- Limits --------------------------------------------------------------
     QUOTA_EXCEEDED(
         "QUOTA_EXCEEDED",

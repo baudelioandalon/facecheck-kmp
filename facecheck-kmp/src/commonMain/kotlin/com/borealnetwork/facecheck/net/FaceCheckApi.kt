@@ -2,30 +2,46 @@ package com.borealnetwork.facecheck.net
 
 import com.borealnetwork.facecheck.FaceCheckConfig
 import com.borealnetwork.facecheck.FaceCheckLogger
+import com.borealnetwork.facecheck.internal.sha256Hex
 import com.borealnetwork.facecheck.isValidSubjectId
+import com.borealnetwork.facecheck.liveness.CapturedEvidenceBundle
+import com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor
+import com.borealnetwork.facecheck.liveness.LivenessSessionWire
+import com.borealnetwork.facecheck.liveness.ServerChallenge
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.LocationContext
+import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
 import io.ktor.client.request.forms.FormBuilder
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.header
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.delay
+import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.pow
 import kotlin.random.Random
@@ -127,6 +143,93 @@ internal class FaceCheckApi(
         }
     }
 
+    suspend fun getEnrollmentModelProfiles(): ModelProfileCatalog =
+        getJson("modelProfiles?operation=enroll")
+
+    suspend fun createLivenessSession(
+        operation: String,
+        subjectId: String,
+        requestedModelProfileId: String? = null,
+        location: LocationContext,
+    ): LivenessSessionDescriptor {
+        requireValidSubjectId(subjectId)
+        val normalizedOperation = operation.trim().lowercase()
+        if (normalizedOperation !in setOf("enroll", "verify")) {
+            throw FaceCheckException(
+                code = FaceCheckErrorCode.INVALID_CONFIG,
+                message = "operation debe ser enroll o verify.",
+            )
+        }
+
+        val request = LivenessSessionRequest(
+            operation = normalizedOperation,
+            subjectId = subjectId,
+            protocolVersion = ACTIVE_LIVENESS_PROTOCOL,
+            sdk = SDK_ID,
+            locationContext = location,
+            requestedModelProfileId = requestedModelProfileId?.takeIf { it.isNotBlank() },
+        )
+        val wire = postJsonWithoutRetry<LivenessSessionWire>(
+            path = LIVENESS_SESSIONS_PATH,
+            body = json.encodeToString(request),
+        )
+        val challenges = wire.challengePlan.map { item ->
+            ServerChallenge.fromWire(item) ?: throw FaceCheckException(
+                code = FaceCheckErrorCode.INVALID_RESPONSE,
+                message = "El servidor devolvió un reto de vida no soportado.",
+            )
+        }
+        return LivenessSessionDescriptor(
+            sessionId = wire.sessionId,
+            subjectId = subjectId,
+            operation = normalizedOperation,
+            expiresAt = wire.expiresAt,
+            modelProfile = wire.modelProfile,
+            protocolVersion = wire.protocolVersion,
+            challengePlan = challenges,
+            capturePolicy = wire.capturePolicy,
+        )
+    }
+
+    suspend fun enroll(
+        session: LivenessSessionDescriptor,
+        evidence: CapturedEvidenceBundle,
+        grant: String? = null,
+        overwrite: Boolean = false,
+        ine: ByteArray? = null,
+    ): EnrollResult {
+        requireSession(session, operation = "enroll")
+        return post(ENROLL_PATH) {
+            append("subjectId", session.subjectId)
+            append("livenessSessionId", session.sessionId)
+            append("modelProfileId", session.modelProfileId)
+            append("evidenceManifest", evidence.toManifestJson())
+            if (grant != null) append("grant", grant)
+            if (overwrite) append("overwrite", "true")
+            evidence.images.forEachIndexed { index, item ->
+                appendImage("evidence_$index", item.jpeg.bytes, filename = "evidence_$index.jpg")
+            }
+            if (ine != null) appendImage("ine", ine)
+        }
+    }
+
+    suspend fun verify(
+        session: LivenessSessionDescriptor,
+        evidence: CapturedEvidenceBundle,
+        compareWith: CompareWith = CompareWith.ENROLLMENT,
+    ): VerifyResult {
+        requireSession(session, operation = "verify")
+        return post(VERIFY_PATH) {
+            append("subjectId", session.subjectId)
+            append("livenessSessionId", session.sessionId)
+            append("evidenceManifest", evidence.toManifestJson())
+            append("compareWith", compareWith.wire)
+            evidence.images.forEachIndexed { index, item ->
+                appendImage("evidence_$index", item.jpeg.bytes, filename = "evidence_$index.jpg")
+            }
+        }
+    }
+
     fun close() = client.close()
 
     private fun requireValidSubjectId(subjectId: String) {
@@ -135,6 +238,24 @@ internal class FaceCheckApi(
     }
 
     // --- Transport ------------------------------------------------------------
+
+    private suspend inline fun <reified T> getJson(path: String): T {
+        val response = client.get(config.endpoint(path)) {
+            header(API_KEY_HEADER, config.apiKey)
+        }
+        if (response.status.isSuccess()) return decodeBody(response)
+        throw response.toException()
+    }
+
+    private suspend inline fun <reified T> postJsonWithoutRetry(path: String, body: String): T {
+        val response = client.post(config.endpoint(path)) {
+            header(API_KEY_HEADER, config.apiKey)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        if (response.status.isSuccess()) return decodeBody(response)
+        throw response.toException()
+    }
 
     /**
      * One multipart POST, retried on transport failures and 5xx only.
@@ -253,9 +374,52 @@ internal class FaceCheckApi(
         const val API_KEY_HEADER = "X-Api-Key"
         const val ENROLL_PATH = "enroll"
         const val VERIFY_PATH = "verify"
+        const val LIVENESS_SESSIONS_PATH = "livenessSessions"
+        const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
+        const val SDK_ID = "facecheck-kmp"
         const val HTTP_SERVER_ERROR = 500
         const val MAX_BACKOFF_MS = 8_000L
     }
+}
+
+@Serializable
+private data class LivenessSessionRequest(
+    val operation: String,
+    val subjectId: String,
+    val protocolVersion: String,
+    val sdk: String,
+    val locationContext: LocationContext,
+    val requestedModelProfileId: String? = null,
+)
+
+@Serializable
+private data class EvidenceManifestItem(
+    val index: Int,
+    val role: String,
+    val width: Int,
+    val height: Int,
+    val sha256: String,
+)
+
+private fun CapturedEvidenceBundle.toManifestJson(): String =
+    Json.encodeToString(
+        images.mapIndexed { index, item ->
+            EvidenceManifestItem(
+                index = index,
+                role = item.role.wire,
+                width = item.jpeg.width,
+                height = item.jpeg.height,
+                sha256 = item.sha256 ?: sha256Hex(item.jpeg.bytes),
+            )
+        },
+    )
+
+private fun requireSession(session: LivenessSessionDescriptor, operation: String) {
+    if (session.operation == operation && session.protocolVersion == "active-liveness-v1") return
+    throw FaceCheckException(
+        code = FaceCheckErrorCode.LIVENESS_SESSION_MISMATCH,
+        message = "La sesión de liveness no coincide con esta solicitud.",
+    )
 }
 
 /**
@@ -266,13 +430,13 @@ internal class FaceCheckApi(
  * with no filename as absent entirely — an upload missing either one comes back
  * as `MISSING_FILE` with a perfectly valid image sitting in the body.
  */
-private fun FormBuilder.appendImage(field: String, bytes: ByteArray) {
+private fun FormBuilder.appendImage(field: String, bytes: ByteArray, filename: String = "$field.jpg") {
     append(
         key = field,
         value = bytes,
         headers = Headers.build {
             append(HttpHeaders.ContentType, "image/jpeg")
-            append(HttpHeaders.ContentDisposition, "filename=\"$field.jpg\"")
+            append(HttpHeaders.ContentDisposition, "filename=\"$filename\"")
         },
     )
 }
