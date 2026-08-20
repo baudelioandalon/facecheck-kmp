@@ -25,6 +25,7 @@ internal data class CapturePresentation(
                 stepLabel = positioningLabel(state.holdProgress),
                 progress = state.holdProgress,
             )
+            is LivenessState.CapturingEvidence -> evidencePresentation(state)
             LivenessState.Capturing,
             is LivenessState.Done -> CapturePresentation(
                 instruction = finalizingInstruction,
@@ -43,5 +44,34 @@ internal data class CapturePresentation(
             val seconds = (3 - (progress.coerceIn(0f, .999f) * 3).toInt()).coerceIn(1, 3)
             return "Mantén el rostro dentro del óvalo · $seconds"
         }
+
+        private fun evidencePresentation(state: LivenessState.CapturingEvidence): CapturePresentation =
+            when (state.role) {
+                com.borealnetwork.facecheck.liveness.EvidenceRole.FRONT_INITIAL -> CapturePresentation(
+                    instruction = "Mantén tu rostro dentro del óvalo",
+                    stepLabel = "Preparando captura",
+                    progress = 0f,
+                )
+                com.borealnetwork.facecheck.liveness.EvidenceRole.TURN_FIRST -> CapturePresentation(
+                    instruction = "No te muevas, estamos tomando la foto",
+                    stepLabel = "Paso 1 de 3",
+                    progress = 1f / 3f,
+                )
+                com.borealnetwork.facecheck.liveness.EvidenceRole.CENTER_BETWEEN -> CapturePresentation(
+                    instruction = "Regresa a ver de frente",
+                    stepLabel = "Centrando rostro",
+                    progress = .5f,
+                )
+                com.borealnetwork.facecheck.liveness.EvidenceRole.TURN_SECOND -> CapturePresentation(
+                    instruction = "No te muevas, estamos tomando la foto",
+                    stepLabel = "Paso 2 de 3",
+                    progress = 2f / 3f,
+                )
+                com.borealnetwork.facecheck.liveness.EvidenceRole.FRONT_FINAL -> CapturePresentation(
+                    instruction = "No te muevas, estamos tomando la foto",
+                    stepLabel = "Paso 3 de 3",
+                    progress = 1f,
+                )
+            }
     }
 }

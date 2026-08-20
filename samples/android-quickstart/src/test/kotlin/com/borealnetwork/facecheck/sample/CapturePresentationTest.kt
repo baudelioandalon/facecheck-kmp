@@ -2,6 +2,7 @@ package com.borealnetwork.facecheck.sample
 
 import com.borealnetwork.facecheck.liveness.Challenge
 import com.borealnetwork.facecheck.liveness.ChallengePhase
+import com.borealnetwork.facecheck.liveness.EvidenceRole
 import com.borealnetwork.facecheck.liveness.FaceFrame
 import com.borealnetwork.facecheck.liveness.LivenessEvidence
 import com.borealnetwork.facecheck.liveness.LivenessState
@@ -79,6 +80,15 @@ class CapturePresentationTest {
         assertEquals("Guardando enrolamiento…", presentation.instruction)
         assertEquals("Pasos completados", presentation.stepLabel)
         assertTrue(presentation.isFinalizing)
+    }
+
+    @Test
+    fun `server evidence roles map to three visible steps`() {
+        assertEquals("Paso 1 de 3", CapturePresentation.from(LivenessState.CapturingEvidence(EvidenceRole.TURN_FIRST)).stepLabel)
+        assertEquals("Paso 2 de 3", CapturePresentation.from(LivenessState.CapturingEvidence(EvidenceRole.TURN_SECOND)).stepLabel)
+        val final = CapturePresentation.from(LivenessState.CapturingEvidence(EvidenceRole.FRONT_FINAL))
+        assertEquals("Paso 3 de 3", final.stepLabel)
+        assertEquals(1f, final.progress)
     }
 
     private fun emptyEvidence(): LivenessEvidence = LivenessEvidence(

@@ -35,9 +35,12 @@ import com.borealnetwork.facecheck.model.FaceCheckException
 import com.borealnetwork.facecheck.model.ModelProfileSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 /** Runnable Android quickstart with a realistic, guided enrolment and verification flow. */
 class VerifyActivity : ComponentActivity() {
@@ -360,6 +363,12 @@ class VerifyActivity : ComponentActivity() {
             visibility = if (screen.operation == SampleOperation.ENROLL) View.VISIBLE else View.GONE
             setPadding(0, 8, 0, 0)
         }
+        val timer = TextView(this).apply {
+            text = "Expira en --:--"
+            setTextColor(Color.argb(180, 255, 255, 255))
+            textSize = 12f
+            setPadding(0, 8, 0, 0)
+        }
         val instruction = TextView(this).apply {
             setTextColor(Color.WHITE)
             textSize = 25f
@@ -374,6 +383,7 @@ class VerifyActivity : ComponentActivity() {
         }
         guidance.addView(step)
         guidance.addView(attempt)
+        guidance.addView(timer)
         guidance.addView(instruction)
         guidance.addView(progress, LinearLayout.LayoutParams(MATCH, 12))
         frame.addView(
@@ -394,6 +404,7 @@ class VerifyActivity : ComponentActivity() {
         captureJob = lifecycleScope.launch {
             var enrollmentFailed = false
             var outcome: ImmersiveScreen.Outcome? = null
+            var timerJob: Job? = null
             try {
                 instruction.text = "Creando sesión segura…"
                 loading.visibility = View.VISIBLE
@@ -408,6 +419,7 @@ class VerifyActivity : ComponentActivity() {
                             modelProfileId = profile.id,
                             location = location,
                         )
+                        timerJob = startSessionCountdown(session.expiresAt, timer, sessionId)
                         challengeJob = observeActiveSession(
                             sessionState = session.state,
                             sessionId = sessionId,
@@ -429,6 +441,7 @@ class VerifyActivity : ComponentActivity() {
                             subjectId = screen.subjectId,
                             location = location,
                         )
+                        timerJob = startSessionCountdown(session.expiresAt, timer, sessionId)
                         challengeJob = observeActiveSession(
                             sessionState = session.state,
                             sessionId = sessionId,
@@ -464,6 +477,7 @@ class VerifyActivity : ComponentActivity() {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } finally {
+                timerJob?.cancel()
                 if (sessionId == activeCaptureId) {
                     if (screen.operation == SampleOperation.VERIFY) releaseCamera()
                     busy = false
@@ -666,6 +680,17 @@ class VerifyActivity : ComponentActivity() {
         releaseCamera()
         busy = false
         renderHome()
+    }
+
+    private fun startSessionCountdown(
+        expiresAt: Instant,
+        target: TextView,
+        sessionId: Long,
+    ): Job = lifecycleScope.launch {
+        while (sessionId == activeCaptureId) {
+            target.text = "Expira en ${ActiveSessionPresentation.countdownLabel(expiresAt, Clock.System.now())}"
+            delay(1_000)
+        }
     }
 
     private fun loadingOverlay(operation: SampleOperation): View = LinearLayout(this).apply {
