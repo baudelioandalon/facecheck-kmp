@@ -73,6 +73,18 @@ sealed interface LivenessState {
         override val progress: Float = 1f
     }
 
+    /**
+     * Server-driven Active Liveness is taking one of the five canonical stills.
+     *
+     * Frames are still monitored for face loss/swap, but they cannot advance the
+     * machine until the orchestrator acknowledges the camera capture for [role].
+     */
+    data class CapturingEvidence(val role: EvidenceRole) : LivenessState {
+        override val instructionEs: String = "No te muevas, estamos tomando la foto"
+        override val progress: Float
+            get() = (role.ordinal.toFloat() / EvidenceRole.entries.size.toFloat()).coerceIn(0f, 1f)
+    }
+
     /** The session succeeded. [evidence] holds the frames that were selected. */
     data class Done(val evidence: LivenessEvidence) : LivenessState {
         override val instructionEs: String = "Listo"

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import androidx.camera.core.ImageProxy
+import com.borealnetwork.facecheck.liveness.CapturedJpeg
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import java.io.ByteArrayOutputStream
@@ -40,7 +41,7 @@ internal object StillEncoder {
      * @return upright JPEG bytes, longest edge at most
      *   [CameraOptions.targetStillSize].
      */
-    fun encode(proxy: ImageProxy, options: CameraOptions): ByteArray {
+    fun encode(proxy: ImageProxy, options: CameraOptions): CapturedJpeg {
         val raw = proxy.planes.firstOrNull()?.buffer
             ?: throw captureFailed("La cámara devolvió una imagen vacía.")
         val bytes = ByteArray(raw.remaining()).also { raw.get(it) }
@@ -54,7 +55,11 @@ internal object StillEncoder {
             if (!upright.compress(Bitmap.CompressFormat.JPEG, options.jpegQuality, sink)) {
                 throw captureFailed("No se pudo comprimir la foto.")
             }
-            sink.toByteArray()
+            CapturedJpeg(
+                bytes = sink.toByteArray(),
+                width = upright.width,
+                height = upright.height,
+            )
         } finally {
             if (upright !== decoded) upright.recycle()
             decoded.recycle()

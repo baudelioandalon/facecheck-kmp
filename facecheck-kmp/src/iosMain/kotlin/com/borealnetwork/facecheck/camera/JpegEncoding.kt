@@ -1,5 +1,6 @@
 package com.borealnetwork.facecheck.camera
 
+import com.borealnetwork.facecheck.liveness.CapturedJpeg
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
@@ -67,7 +68,7 @@ internal fun encodePixelBufferAsJpeg(
     mirrored: Boolean,
     maxEdge: Int,
     quality: Int,
-): ByteArray? {
+): CapturedJpeg? {
     val exif = if (mirrored) orientation.mirroredExifValue() else orientation.exifValue
     val upright = CIImage(cVPixelBuffer = buffer).imageByApplyingOrientation(exif.toInt())
     val cgImage = sharedCiContext.createCGImage(upright, fromRect = upright.extent)
@@ -88,7 +89,7 @@ internal fun encodePixelBufferAsJpeg(
  * writes: `drawInRect` applies `imageOrientation`, so what comes out is upright
  * pixels with no tag at all.
  */
-internal fun reencodeJpeg(data: NSData, maxEdge: Int, quality: Int): ByteArray? =
+internal fun reencodeJpeg(data: NSData, maxEdge: Int, quality: Int): CapturedJpeg? =
     UIImage.imageWithData(data)?.downscaledJpeg(maxEdge, quality)
 
 /**
@@ -99,7 +100,7 @@ internal fun reencodeJpeg(data: NSData, maxEdge: Int, quality: Int): ByteArray? 
  * upload.
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun UIImage.downscaledJpeg(maxEdge: Int, quality: Int): ByteArray? {
+private fun UIImage.downscaledJpeg(maxEdge: Int, quality: Int): CapturedJpeg? {
     val (width, height) = size.useContents { width to height }
     if (width <= 0.0 || height <= 0.0) return null
 
@@ -115,7 +116,11 @@ private fun UIImage.downscaledJpeg(maxEdge: Int, quality: Int): ByteArray? {
     UIGraphicsEndImageContext()
 
     val jpeg = rendered?.let { UIImageJPEGRepresentation(it, quality / 100.0) } ?: return null
-    return jpeg.toByteArray()
+    return CapturedJpeg(
+        bytes = jpeg.toByteArray(),
+        width = targetWidth.toInt(),
+        height = targetHeight.toInt(),
+    )
 }
 
 /** Copy an `NSData` into a Kotlin [ByteArray]. */

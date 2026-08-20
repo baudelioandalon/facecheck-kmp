@@ -40,6 +40,73 @@ class ChallengeMachineTest {
     }
 
     @Test
+    fun server_plan_freezes_at_each_evidence_role_until_capture_is_acknowledged() {
+        val machine = ChallengeMachine.serverDriven(
+            serverChallenges = listOf(ServerChallenge.TURN_LEFT, ServerChallenge.TURN_RIGHT),
+            config = testConfig,
+        )
+
+        machine.onFrame(frame(0))
+        machine.onFrame(frame(testConfig.positioningHoldMs + 100))
+        assertEquals(
+            LivenessState.CapturingEvidence(EvidenceRole.FRONT_INITIAL),
+            machine.state.value,
+        )
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 200, yaw = -40f))
+        assertEquals(
+            LivenessState.CapturingEvidence(EvidenceRole.FRONT_INITIAL),
+            machine.state.value,
+        )
+
+        machine.completeEvidenceCapture(EvidenceRole.FRONT_INITIAL)
+        machine.onFrame(frame(testConfig.positioningHoldMs + 300, yaw = -40f))
+        assertEquals(
+            LivenessState.CapturingEvidence(EvidenceRole.TURN_FIRST),
+            machine.state.value,
+        )
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 400, yaw = 40f))
+        assertEquals(
+            LivenessState.CapturingEvidence(EvidenceRole.TURN_FIRST),
+            machine.state.value,
+        )
+    }
+
+    @Test
+    fun server_plan_requests_all_five_roles_in_canonical_order() {
+        val machine = ChallengeMachine.serverDriven(
+            serverChallenges = listOf(ServerChallenge.TURN_LEFT, ServerChallenge.TURN_RIGHT),
+            config = testConfig,
+        )
+        val roles = mutableListOf<EvidenceRole>()
+
+        fun acknowledge(role: EvidenceRole) {
+            roles += role
+            machine.completeEvidenceCapture(role)
+        }
+
+        machine.onFrame(frame(0))
+        machine.onFrame(frame(testConfig.positioningHoldMs + 100))
+        acknowledge(assertIs<LivenessState.CapturingEvidence>(machine.state.value).role)
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 200, yaw = -40f))
+        acknowledge(assertIs<LivenessState.CapturingEvidence>(machine.state.value).role)
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 300))
+        acknowledge(assertIs<LivenessState.CapturingEvidence>(machine.state.value).role)
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 400, yaw = 40f))
+        acknowledge(assertIs<LivenessState.CapturingEvidence>(machine.state.value).role)
+
+        machine.onFrame(frame(testConfig.positioningHoldMs + 500))
+        acknowledge(assertIs<LivenessState.CapturingEvidence>(machine.state.value).role)
+
+        assertEquals(EvidenceRole.entries.toList(), roles)
+        assertIs<LivenessState.Done>(machine.state.value)
+    }
+
+    @Test
     fun idle_until_the_first_frame_then_positioning() {
         val machine = machine(Challenge.TurnLeft)
         assertEquals(LivenessState.Idle, machine.state.value)

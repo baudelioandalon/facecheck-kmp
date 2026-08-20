@@ -57,6 +57,7 @@ import kotlin.math.abs
 class ChallengeMachine(
     val challenges: List<Challenge>,
     private val config: LivenessConfig = LivenessConfig(),
+    private val evidenceRoles: List<EvidenceRole>? = null,
 ) {
     init {
         require(challenges.isNotEmpty()) {
@@ -86,6 +87,7 @@ class ChallengeMachine(
 
     private var challengeIndex: Int = 0
     private var phase: ChallengePhase = ChallengePhase.AWAITING_ACTION
+    private var pendingEvidenceRole: EvidenceRole? = null
 
     /** Best frame seen during positioning, by [scoreAsPrimary]. */
     private var primaryFrame: FaceFrame? = null
@@ -135,7 +137,7 @@ class ChallengeMachine(
             is LivenessState.ChallengeActive -> handleChallenge(frame, current)
             // Capturing only needs the face to still be there; the checks above
             // already established that.
-            LivenessState.Capturing -> Unit
+            LivenessState.Capturing, is LivenessState.CapturingEvidence -> Unit
             else -> Unit
         }
     }
@@ -174,6 +176,48 @@ class ChallengeMachine(
         )
     }
 
+    /**
+     * Acknowledge a server-driven evidence still and advance to the next action.
+     *
+     * This is deliberately not driven by frames: once a role is ready, the
+     * machine freezes there until the camera has actually produced the JPEG that
+     * will be sent to the backend.
+     */
+    fun completeEvidenceCapture(role: EvidenceRole) {
+        check(_state.value is LivenessState.CapturingEvidence) {
+            "completeEvidenceCapture() is only valid while CapturingEvidence, was ${_state.value}"
+        }
+        val expected = pendingEvidenceRole
+        check(role == expected) {
+            "expected evidence role $expected, got $role"
+        }
+        pendingEvidenceRole = null
+        when (role) {
+            EvidenceRole.FRONT_INITIAL -> startChallenge(0, stepStartedMs)
+            EvidenceRole.TURN_FIRST,
+            EvidenceRole.TURN_SECOND,
+            -> {
+                phase = ChallengePhase.RETURNING_TO_CENTER
+                _state.value = LivenessState.ChallengeActive(
+                    challenge = challenges[challengeIndex],
+                    index = challengeIndex,
+                    total = challenges.size,
+                    phase = phase,
+                )
+            }
+            EvidenceRole.CENTER_BETWEEN -> startChallenge(1, stepStartedMs)
+            EvidenceRole.FRONT_FINAL -> {
+                val primary = primaryFrame
+                checkNotNull(primary) {
+                    "reached final capture without a primary frame"
+                }
+                _state.value = LivenessState.Done(
+                    LivenessEvidence(primary = primary, challenges = completed.toList()),
+                )
+            }
+        }
+    }
+
     /** Abort the session. A no-op once it has already ended. */
     fun cancel() {
         if (!_state.value.isTerminal) fail(FailureReason.CANCELLED)
@@ -188,6 +232,7 @@ class ChallengeMachine(
         trackingBound = false
         challengeIndex = 0
         phase = ChallengePhase.AWAITING_ACTION
+        pendingEvidenceRole = null
         primaryFrame = null
         primaryScore = Float.NEGATIVE_INFINITY
         extremeFrame = null
@@ -227,7 +272,11 @@ class ChallengeMachine(
         val start = holdStartedMs ?: frame.timestampMs.also { holdStartedMs = it }
         val held = frame.timestampMs - start
         if (held >= config.positioningHoldMs) {
-            startChallenge(0, frame.timestampMs)
+            if (isServerDriven) {
+                requestEvidence(EvidenceRole.FRONT_INITIAL, frame.timestampMs)
+            } else {
+                startChallenge(0, frame.timestampMs)
+            }
         } else {
             val ratio = if (config.positioningHoldMs == 0L) {
                 1f
@@ -342,8 +391,20 @@ class ChallengeMachine(
         when (phase) {
             ChallengePhase.AWAITING_ACTION -> {
                 if (reached) {
-                    phase = ChallengePhase.RETURNING_TO_CENTER
-                    emitChallenge(current.copy(phase = phase, hint = null))
+                    if (isServerDriven) {
+                        val frame = extremeFrame
+                        checkNotNull(frame) {
+                            "a turn reached its threshold without a selected frame"
+                        }
+                        completed += ChallengeCapture(challenges[challengeIndex], frame)
+                        requestEvidence(
+                            if (challengeIndex == 0) EvidenceRole.TURN_FIRST else EvidenceRole.TURN_SECOND,
+                            frame.timestampMs,
+                        )
+                    } else {
+                        phase = ChallengePhase.RETURNING_TO_CENTER
+                        emitChallenge(current.copy(phase = phase, hint = null))
+                    }
                 } else if (current.hint != null) {
                     emitChallenge(current.copy(hint = null))
                 }
@@ -351,7 +412,18 @@ class ChallengeMachine(
 
             ChallengePhase.RETURNING_TO_CENTER -> {
                 if (abs(frame.yaw) < config.centerToleranceDeg) {
-                    finishChallenge(frame.timestampMs)
+                    if (isServerDriven) {
+                        requestEvidence(
+                            if (challengeIndex == 0) {
+                                EvidenceRole.CENTER_BETWEEN
+                            } else {
+                                EvidenceRole.FRONT_FINAL
+                            },
+                            frame.timestampMs,
+                        )
+                    } else {
+                        finishChallenge(frame.timestampMs)
+                    }
                 } else if (current.hint != null) {
                     emitChallenge(current.copy(hint = null))
                 }
@@ -461,7 +533,7 @@ class ChallengeMachine(
         val limit = when (current) {
             is LivenessState.Positioning -> config.positioningTimeoutMs
             is LivenessState.ChallengeActive -> config.challengeTimeoutMs
-            LivenessState.Capturing -> config.captureTimeoutMs
+            LivenessState.Capturing, is LivenessState.CapturingEvidence -> config.captureTimeoutMs
             else -> null
         }
         if (limit != null && elapsed > limit) {
@@ -472,7 +544,8 @@ class ChallengeMachine(
         // Only meaningful once the user has been asked to do something. While
         // positioning, "no face" is the normal starting condition.
         val watchesForLoss = current is LivenessState.ChallengeActive ||
-            current is LivenessState.Capturing
+            current is LivenessState.Capturing ||
+            current is LivenessState.CapturingEvidence
         if (watchesForLoss && nowMs - lastFaceSeenMs > config.faceLostGraceMs) {
             fail(FailureReason.FACE_LOST)
             return true
@@ -518,7 +591,37 @@ class ChallengeMachine(
         _state.value = LivenessState.Failed(reason)
     }
 
-    private companion object {
+    private val isServerDriven: Boolean
+        get() = evidenceRoles != null
+
+    private fun requestEvidence(role: EvidenceRole, nowMs: Long) {
+        require(evidenceRoles?.contains(role) != false) {
+            "evidence role $role is not part of this session"
+        }
+        stepStartedMs = nowMs
+        holdStartedMs = null
+        pendingEvidenceRole = role
+        _state.value = LivenessState.CapturingEvidence(role)
+    }
+
+    companion object {
+        fun serverDriven(
+            serverChallenges: List<ServerChallenge>,
+            config: LivenessConfig = LivenessConfig(),
+        ): ChallengeMachine {
+            require(serverChallenges.size == 2) {
+                "Active Liveness v1 expects exactly two server challenges"
+            }
+            require(serverChallenges.toSet().size == 2) {
+                "Active Liveness v1 expects one left and one right turn"
+            }
+            return ChallengeMachine(
+                challenges = serverChallenges.map { it.challenge },
+                config = config,
+                evidenceRoles = EvidenceRole.entries,
+            )
+        }
+
         /** Angular deviation at which a face stops being useful for matching. */
         const val MAX_USEFUL_DEVIATION_DEG = 90f
         const val FRONTALITY_WEIGHT = 0.7f

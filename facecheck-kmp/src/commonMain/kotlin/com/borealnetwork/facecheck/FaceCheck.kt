@@ -146,7 +146,7 @@ object FaceCheck {
         val capture = runLivenessSession(camera, machine, config.livenessTimeoutMs)
         return requireApi().enroll(
             subjectId = subjectId,
-            selfie = capture.still,
+            selfie = capture.still.bytes,
             ine = ine,
             grant = grant,
             overwrite = overwrite,
@@ -173,7 +173,7 @@ object FaceCheck {
         val capture = runLivenessSession(camera, machine, config.livenessTimeoutMs)
         return requireApi().verify(
             subjectId = subjectId,
-            selfie = capture.still,
+            selfie = capture.still.bytes,
             compareWith = compareWith,
         )
     }

@@ -4,8 +4,9 @@ import com.borealnetwork.facecheck.camera.CameraController
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -14,16 +15,22 @@ import kotlin.test.assertTrue
 /** A camera that replays a scripted list of frames and hands back fixed bytes. */
 private class ScriptedCamera(
     private val script: List<FaceFrame>,
-    private val still: ByteArray = "jpeg".encodeToByteArray(),
+    private val still: CapturedJpeg = CapturedJpeg("jpeg".encodeToByteArray(), width = 32, height = 24),
     private val failCapture: Boolean = false,
 ) : CameraController {
     var started = 0
     var stopped = 0
     var captures = 0
 
-    override val frames: Flow<FaceFrame> get() = script.asFlow()
+    override val frames: Flow<FaceFrame>
+        get() = flow {
+            script.forEach { frame ->
+                emit(frame)
+                yield()
+            }
+        }
 
-    override suspend fun captureStill(): ByteArray {
+    override suspend fun captureStill(): CapturedJpeg {
         captures++
         if (failCapture) {
             throw FaceCheckException(FaceCheckErrorCode.CAMERA_UNAVAILABLE, "sin cámara")
@@ -56,12 +63,36 @@ class LivenessSessionTest {
 
         val capture = runLivenessSession(camera, machine, timeoutMs = 60_000)
 
-        assertEquals("jpeg", capture.still.decodeToString())
+        assertEquals("jpeg", capture.still.bytes.decodeToString())
         assertEquals(1, capture.evidence.challenges.size)
         assertEquals(1, camera.started)
         assertEquals(1, camera.captures)
         assertEquals(1, camera.stopped)
         assertTrue(machine.state.value is LivenessState.Done)
+    }
+
+    @Test
+    fun a_server_driven_session_captures_five_ordered_evidence_images() = runTest {
+        val camera = ScriptedCamera(
+            script = listOf(
+                frame(0),
+                frame(testConfig.positioningHoldMs + 100),
+                frame(testConfig.positioningHoldMs + 200, yaw = -40f),
+                frame(testConfig.positioningHoldMs + 300),
+                frame(testConfig.positioningHoldMs + 400, yaw = 40f),
+                frame(testConfig.positioningHoldMs + 500),
+            ),
+        )
+        val machine = ChallengeMachine.serverDriven(
+            listOf(ServerChallenge.TURN_LEFT, ServerChallenge.TURN_RIGHT),
+            testConfig,
+        )
+
+        val capture = runLivenessSession(camera, machine, timeoutMs = 60_000)
+
+        assertEquals(5, camera.captures)
+        assertEquals(EvidenceRole.entries.toList(), capture.evidenceBundle.images.map { it.role })
+        assertEquals("jpeg", capture.evidenceBundle.images.last().jpeg.bytes.decodeToString())
     }
 
     @Test

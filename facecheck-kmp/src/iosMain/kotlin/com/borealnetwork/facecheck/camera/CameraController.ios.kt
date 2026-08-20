@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.camera
 
 import com.borealnetwork.facecheck.FaceCheckLogger
+import com.borealnetwork.facecheck.liveness.CapturedJpeg
 import com.borealnetwork.facecheck.liveness.FaceFrame
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
@@ -188,7 +189,7 @@ class IosCameraController internal constructor(
     private var photoDelegate: PhotoDelegate? = null
 
     /** Set when a still is wanted from the analysis stream; see [captureFromStream]. */
-    private var stillFromStream: ((ByteArray?) -> Unit)? = null
+    private var stillFromStream: ((CapturedJpeg?) -> Unit)? = null
 
     private val sampleDelegate = SampleDelegate(this)
 
@@ -252,7 +253,7 @@ class IosCameraController internal constructor(
         }
     }
 
-    override suspend fun captureStill(): ByteArray {
+    override suspend fun captureStill(): CapturedJpeg {
         capturePhoto()?.let { return it }
         FaceCheckLogger.warn { "photo output unavailable; falling back to the analysis stream" }
         captureFromStream()?.let { return it }
@@ -454,7 +455,7 @@ class IosCameraController internal constructor(
     // marked beta by cinterop; the alternative is building an NSMutableDictionary
     // by hand, which is the same bridge with more code.
     @OptIn(BetaInteropApi::class)
-    private suspend fun capturePhoto(): ByteArray? = suspendCancellableCoroutine { cont ->
+    private suspend fun capturePhoto(): CapturedJpeg? = suspendCancellableCoroutine { cont ->
         dispatch_async(sessionQueue) {
             if (!running || photoOutput.connectionWithMediaType(AVMediaTypeVideo) == null) {
                 cont.resume(null)
@@ -482,7 +483,7 @@ class IosCameraController internal constructor(
      * until the session-wide deadline rather than getting a camera error it can
      * show the user.
      */
-    private suspend fun captureFromStream(): ByteArray? = withTimeoutOrNull(STREAM_STILL_TIMEOUT_MS) {
+    private suspend fun captureFromStream(): CapturedJpeg? = withTimeoutOrNull(STREAM_STILL_TIMEOUT_MS) {
         suspendCancellableCoroutine { cont ->
             dispatch_async(sessionQueue) {
                 if (!running) {

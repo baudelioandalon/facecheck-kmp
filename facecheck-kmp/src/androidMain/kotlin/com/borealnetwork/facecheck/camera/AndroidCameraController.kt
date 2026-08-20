@@ -330,7 +330,8 @@ class AndroidCameraController(
         }
     }
 
-    override suspend fun captureStill(): ByteArray = suspendCancellableCoroutine { continuation ->
+    override suspend fun captureStill(): com.borealnetwork.facecheck.liveness.CapturedJpeg =
+        suspendCancellableCoroutine { continuation ->
         val capture = imageCapture
         if (capture == null) {
             continuation.resumeWithException(
@@ -349,7 +350,7 @@ class AndroidCameraController(
                     try {
                         val jpeg = StillEncoder.encode(image, options)
                         FaceCheckLogger.debug {
-                            "still capturado: ${FaceCheckLogger.describeBytes(jpeg.size)} " +
+                            "still capturado: ${FaceCheckLogger.describeBytes(jpeg.bytes.size)} " +
                                 "rotación=${image.imageInfo.rotationDegrees}°"
                         }
                         if (continuation.isActive) continuation.resume(jpeg)

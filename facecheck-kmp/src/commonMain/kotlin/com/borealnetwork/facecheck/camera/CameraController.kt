@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.camera
 
 import com.borealnetwork.facecheck.liveness.FaceFrame
+import com.borealnetwork.facecheck.liveness.CapturedJpeg
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -41,7 +42,7 @@ interface CameraController {
      *   [CAMERA_UNAVAILABLE][com.borealnetwork.facecheck.model.FaceCheckErrorCode.CAMERA_UNAVAILABLE]
      *   when the capture fails.
      */
-    suspend fun captureStill(): ByteArray
+    suspend fun captureStill(): CapturedJpeg
 
     /** Open the camera and start delivering [frames]. Idempotent. */
     fun start()

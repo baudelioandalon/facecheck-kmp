@@ -13,8 +13,11 @@ import kotlinx.coroutines.withTimeout
 /** A completed liveness session: the photo to upload, plus what was seen. */
 internal data class LivenessCapture(
     /** JPEG bytes from [CameraController.captureStill]. */
-    val still: ByteArray,
+    val still: CapturedJpeg,
     val evidence: LivenessEvidence,
+    val evidenceBundle: CapturedEvidenceBundle = CapturedEvidenceBundle(
+        EvidenceRole.entries.map { role -> CapturedEvidence(role, still) },
+    ),
 ) {
     // Generated equals/hashCode compare ByteArray by identity, which makes two
     // captures of the same photo unequal. Content comparison is what a caller
@@ -22,10 +25,13 @@ internal data class LivenessCapture(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is LivenessCapture) return false
-        return still.contentEquals(other.still) && evidence == other.evidence
+        return still == other.still &&
+            evidence == other.evidence &&
+            evidenceBundle == other.evidenceBundle
     }
 
-    override fun hashCode(): Int = 31 * still.contentHashCode() + evidence.hashCode()
+    override fun hashCode(): Int = 31 * (31 * still.hashCode() + evidence.hashCode()) +
+        evidenceBundle.hashCode()
 }
 
 /**
@@ -51,28 +57,61 @@ internal suspend fun runLivenessSession(
                 try {
                     // StateFlow replays its current value, so a session that
                     // already failed before this subscribes is still observed.
-                    val gate = machine.state.first {
-                        it is LivenessState.Capturing || it is LivenessState.Failed
-                    }
-                    if (gate is LivenessState.Failed) {
-                        FaceCheckLogger.info { "liveness failed: ${gate.reason.name}" }
-                        throw FaceCheckException(
-                            code = gate.reason.toErrorCode(),
-                            message = gate.reason.messageEs,
-                        )
-                    }
+                    val evidenceImages = mutableListOf<CapturedEvidence>()
+                    var finalStill: CapturedJpeg? = null
+                    var done: LivenessState.Done? = null
+                    while (done == null) {
+                        when (val gate = machine.state.first {
+                            it is LivenessState.Capturing ||
+                                it is LivenessState.CapturingEvidence ||
+                                it is LivenessState.Done ||
+                                it is LivenessState.Failed
+                        }) {
+                            is LivenessState.Failed -> {
+                                FaceCheckLogger.info { "liveness failed: ${gate.reason.name}" }
+                                throw FaceCheckException(
+                                    code = gate.reason.toErrorCode(),
+                                    message = gate.reason.messageEs,
+                                )
+                            }
 
-                    val still = camera.captureStill()
-                    machine.completeCapture()
-                    val done = machine.state.value as? LivenessState.Done
-                        ?: error("completeCapture() did not produce a Done state")
+                            LivenessState.Capturing -> {
+                                val still = camera.captureStill()
+                                finalStill = still
+                                machine.completeCapture()
+                            }
+
+                            is LivenessState.CapturingEvidence -> {
+                                val still = camera.captureStill()
+                                finalStill = still
+                                evidenceImages += CapturedEvidence(gate.role, still)
+                                machine.completeEvidenceCapture(gate.role)
+                            }
+
+                            is LivenessState.Done -> done = gate
+                            else -> Unit
+                        }
+                        done = done ?: machine.state.value as? LivenessState.Done
+                    }
 
                     FaceCheckLogger.info {
                         "liveness passed in ${done.evidence.durationMs} ms with " +
-                            "${done.evidence.challenges.size} challenges; still is " +
-                            FaceCheckLogger.describeBytes(still.size)
+                            "${done.evidence.challenges.size} challenges; evidence images=" +
+                            "${evidenceImages.size}"
                     }
-                    LivenessCapture(still, done.evidence)
+                    LivenessCapture(
+                        still = checkNotNull(finalStill) { "liveness ended without a captured still" },
+                        evidence = done.evidence,
+                        evidenceBundle = if (evidenceImages.isEmpty()) {
+                            CapturedEvidenceBundle(
+                                EvidenceRole.entries.map { role ->
+                                    CapturedEvidence(role, checkNotNull(finalStill))
+                                },
+                            )
+                        } else {
+                            CapturedEvidenceBundle(evidenceImages)
+                        },
+                    )
                 } finally {
                     // The camera keeps producing frames after the session ends;
                     // without this the collector outlives the scope's purpose.
