@@ -23,6 +23,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         buildConfigField("String", "FACECHECK_API_KEY", "\"$facecheckApiKey\"")
+        resValue("string", "app_name", "FaceCheck quickstart")
     }
 
     buildFeatures {
