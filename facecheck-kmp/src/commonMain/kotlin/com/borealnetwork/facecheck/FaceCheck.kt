@@ -86,7 +86,7 @@ object FaceCheck {
         activeConfig = config
         api = FaceCheckApi(config)
         FaceCheckLogger.level = config.logLevel
-        FaceCheckLogger.info { "FaceCheck initialized: $config" }
+        FaceCheckLogger.info { "FaceCheck initialized" }
     }
 
     internal fun initializeForTests(config: FaceCheckConfig, backend: FaceCheckBackend) {

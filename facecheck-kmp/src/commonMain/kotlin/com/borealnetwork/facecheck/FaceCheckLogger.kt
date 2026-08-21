@@ -1,5 +1,7 @@
 package com.borealnetwork.facecheck
 
+import com.borealnetwork.facecheck.model.FaceCheckErrorCode
+
 /**
  * Opt-in diagnostics for integrators.
  *
@@ -34,6 +36,23 @@ object FaceCheckLogger {
     fun info(message: () -> String) = log(FaceCheckLogLevel.INFO, message)
 
     fun debug(message: () -> String) = log(FaceCheckLogLevel.DEBUG, message)
+
+    /**
+     * Emits the SDK's safe failure envelope.
+     *
+     * It deliberately accepts no remote message, URL, subject identifier or
+     * response details. Integrators can diagnose an outcome without turning a
+     * backend response into a logcat payload.
+     */
+    fun warnFailure(
+        operation: FaceCheckLogOperation,
+        code: FaceCheckErrorCode,
+        httpStatus: Int?,
+        retryable: Boolean,
+    ) = warn {
+        "operation=${operation.wire} code=${code.wire} " +
+            "httpStatus=${httpStatus ?: "none"} retryable=$retryable"
+    }
 
     /**
      * The only way to mention image data in a log line.
@@ -74,6 +93,14 @@ object FaceCheckLogger {
 
     /** Keeps the domain, which is useful for support, and drops the identity. */
     private val EMAIL_PATTERN = Regex("""([A-Za-z0-9._%+\-]+)@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})""")
+}
+
+/** Operations whose failures may be written to host diagnostics. */
+enum class FaceCheckLogOperation(internal val wire: String) {
+    ENROLL("enroll"),
+    VERIFY("verify"),
+    MODEL_PROFILES("model_profiles"),
+    LIVENESS_SESSION("liveness_session"),
 }
 
 /** Severity, ordered so a smaller ordinal is more severe. */

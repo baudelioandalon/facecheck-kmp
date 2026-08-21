@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.net
 
 import com.borealnetwork.facecheck.FaceCheckConfig
+import com.borealnetwork.facecheck.FaceCheckLogOperation
 import com.borealnetwork.facecheck.FaceCheckLogger
 import com.borealnetwork.facecheck.internal.sha256Hex
 import com.borealnetwork.facecheck.isValidSubjectId
@@ -107,12 +108,8 @@ internal class FaceCheckApi(
         overwrite: Boolean,
     ): EnrollResult {
         requireValidSubjectId(subjectId)
-        FaceCheckLogger.info {
-            "enroll: selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
-                "ine=${ine?.let { FaceCheckLogger.describeBytes(it.size) } ?: "none"} " +
-                "grant=${if (grant == null) "none" else "present"} overwrite=$overwrite"
-        }
-        return post(ENROLL_PATH) {
+        FaceCheckLogger.info { "operation=enroll request=started" }
+        return post(ENROLL_PATH, FaceCheckLogOperation.ENROLL) {
             append("subjectId", subjectId)
             if (grant != null) append("grant", grant)
             if (overwrite) append("overwrite", "true")
@@ -132,11 +129,8 @@ internal class FaceCheckApi(
         compareWith: CompareWith,
     ): VerifyResult {
         requireValidSubjectId(subjectId)
-        FaceCheckLogger.info {
-            "verify: selfie=${FaceCheckLogger.describeBytes(selfie.size)} " +
-                "compareWith=${compareWith.wire}"
-        }
-        return post(VERIFY_PATH) {
+        FaceCheckLogger.info { "operation=verify request=started" }
+        return post(VERIFY_PATH, FaceCheckLogOperation.VERIFY) {
             append("subjectId", subjectId)
             append("compareWith", compareWith.wire)
             appendImage("selfie", selfie)
@@ -144,7 +138,7 @@ internal class FaceCheckApi(
     }
 
     override suspend fun getEnrollmentModelProfiles(): ModelProfileCatalog =
-        getJson("modelProfiles?operation=enroll")
+        getJson("modelProfiles?operation=enroll", FaceCheckLogOperation.MODEL_PROFILES)
 
     override suspend fun createLivenessSession(
         operation: String,
@@ -172,6 +166,7 @@ internal class FaceCheckApi(
         val wire = postJsonWithoutRetry<LivenessSessionWire>(
             path = LIVENESS_SESSIONS_PATH,
             body = json.encodeToString(request),
+            operation = FaceCheckLogOperation.LIVENESS_SESSION,
         )
         val challenges = wire.challengePlan.map { item ->
             ServerChallenge.fromWire(item) ?: throw FaceCheckException(
@@ -199,7 +194,8 @@ internal class FaceCheckApi(
         ine: ByteArray?,
     ): EnrollResult {
         requireSession(session, operation = "enroll")
-        return post(ENROLL_PATH) {
+        FaceCheckLogger.info { "operation=enroll request=started" }
+        return post(ENROLL_PATH, FaceCheckLogOperation.ENROLL) {
             append("subjectId", session.subjectId)
             append("livenessSessionId", session.sessionId)
             append("modelProfileId", session.modelProfileId)
@@ -219,7 +215,8 @@ internal class FaceCheckApi(
         compareWith: CompareWith,
     ): VerifyResult {
         requireSession(session, operation = "verify")
-        return post(VERIFY_PATH) {
+        FaceCheckLogger.info { "operation=verify request=started" }
+        return post(VERIFY_PATH, FaceCheckLogOperation.VERIFY) {
             append("subjectId", session.subjectId)
             append("livenessSessionId", session.sessionId)
             append("evidenceManifest", evidence.toManifestJson())
@@ -239,22 +236,33 @@ internal class FaceCheckApi(
 
     // --- Transport ------------------------------------------------------------
 
-    private suspend inline fun <reified T> getJson(path: String): T {
+    private suspend inline fun <reified T> getJson(
+        path: String,
+        operation: FaceCheckLogOperation,
+    ): T {
         val response = client.get(config.endpoint(path)) {
             header(API_KEY_HEADER, config.apiKey)
         }
-        if (response.status.isSuccess()) return decodeBody(response)
-        throw response.toException()
+        if (response.status.isSuccess()) return decodeBody(response, operation)
+        val error = response.toException()
+        logFailure(operation, error)
+        throw error
     }
 
-    private suspend inline fun <reified T> postJsonWithoutRetry(path: String, body: String): T {
+    private suspend inline fun <reified T> postJsonWithoutRetry(
+        path: String,
+        body: String,
+        operation: FaceCheckLogOperation,
+    ): T {
         val response = client.post(config.endpoint(path)) {
             header(API_KEY_HEADER, config.apiKey)
             contentType(ContentType.Application.Json)
             setBody(body)
         }
-        if (response.status.isSuccess()) return decodeBody(response)
-        throw response.toException()
+        if (response.status.isSuccess()) return decodeBody(response, operation)
+        val error = response.toException()
+        logFailure(operation, error)
+        throw error
     }
 
     /**
@@ -270,6 +278,7 @@ internal class FaceCheckApi(
      */
     private suspend inline fun <reified T> post(
         path: String,
+        operation: FaceCheckLogOperation,
         crossinline parts: FormBuilder.() -> Unit,
     ): T {
         var attempt = 0
@@ -288,11 +297,8 @@ internal class FaceCheckApi(
                 // types; from common code the only portable discriminator is the
                 // exception's own name.
                 val transport = failure.asTransportFailure()
+                logFailure(operation, transport)
                 if (attempt < config.maxRetries) {
-                    FaceCheckLogger.warn {
-                        "$path failed (${transport.code.wire}), retry ${attempt + 1} of " +
-                            "${config.maxRetries}: ${failure.message}"
-                    }
                     sleep(backoffMs(attempt))
                     attempt++
                     continue
@@ -301,40 +307,58 @@ internal class FaceCheckApi(
             }
 
             if (response.status.isSuccess()) {
-                return decodeBody(response)
+                return decodeBody(response, operation)
             }
 
             val error = response.toException()
+            logFailure(operation, error)
             if (response.status.value >= HTTP_SERVER_ERROR && attempt < config.maxRetries) {
-                FaceCheckLogger.warn {
-                    "$path returned ${response.status.value}, retry ${attempt + 1} of " +
-                        "${config.maxRetries}"
-                }
                 sleep(backoffMs(attempt))
                 attempt++
                 continue
             }
-            FaceCheckLogger.warn { "$path rejected: ${error.code.wire} ${error.message}" }
             throw error
         }
     }
 
-    private suspend inline fun <reified T> decodeBody(response: HttpResponse): T {
-        val body = response.bodyAsText()
+    private suspend inline fun <reified T> decodeBody(
+        response: HttpResponse,
+        operation: FaceCheckLogOperation,
+    ): T {
         return try {
+            val body = response.bodyAsText()
             json.decodeFromString<T>(body)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
         } catch (failure: Exception) {
-            throw FaceCheckException(
+            val invalidResponse = FaceCheckException(
                 code = FaceCheckErrorCode.INVALID_RESPONSE,
                 httpStatus = response.status.value,
                 cause = failure,
             )
+            logFailure(operation, invalidResponse)
+            throw invalidResponse
         }
+    }
+
+    private fun logFailure(operation: FaceCheckLogOperation, failure: FaceCheckException) {
+        FaceCheckLogger.warnFailure(
+            operation = operation,
+            code = failure.code,
+            httpStatus = failure.httpStatus,
+            retryable = failure.isRetryable,
+        )
     }
 
     /** Parse the `{"error":{"code","message","details"}}` envelope. */
     private suspend fun HttpResponse.toException(): FaceCheckException {
-        val body = runCatching { bodyAsText() }.getOrDefault("")
+        val body = try {
+            bodyAsText()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            ""
+        }
         val envelope = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()
         val error = envelope?.get("error") as? JsonObject
 

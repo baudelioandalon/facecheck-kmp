@@ -1,6 +1,9 @@
 package com.borealnetwork.facecheck.net
 
 import com.borealnetwork.facecheck.FaceCheckConfig
+import com.borealnetwork.facecheck.FaceCheckLogLevel
+import com.borealnetwork.facecheck.FaceCheckLogger
+import com.borealnetwork.facecheck.FaceCheckLogSink
 import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
@@ -305,6 +308,42 @@ class FaceCheckApiTest {
     }
 
     @Test
+    fun a_liveness_session_rejection_logs_only_the_structured_failure_envelope() = runTest {
+        val previousLevel = FaceCheckLogger.level
+        val previousSink = FaceCheckLogger.sink
+        val warningLines = mutableListOf<String>()
+        FaceCheckLogger.level = FaceCheckLogLevel.WARN
+        FaceCheckLogger.sink = FaceCheckLogSink { _, message -> warningLines += message }
+
+        try {
+            val api = api {
+                respondJson(
+                    """{"error":{"code":"LOCATION_REQUIRED","message":"sensitive session diagnostic"}}""",
+                    HttpStatusCode.BadRequest,
+                )
+            }
+
+            assertFailsWith<FaceCheckException> {
+                api.createLivenessSession(
+                    operation = "enroll",
+                    subjectId = "person_demo_01",
+                    requestedModelProfileId = "arcface-w600k-mbf-r1",
+                    location = FRESH_LOCATION,
+                )
+            }
+
+            assertEquals(
+                listOf("operation=liveness_session code=LOCATION_REQUIRED httpStatus=400 retryable=false"),
+                warningLines,
+            )
+            assertFalse(warningLines.joinToString().contains("sensitive session diagnostic"))
+        } finally {
+            FaceCheckLogger.level = previousLevel
+            FaceCheckLogger.sink = previousSink
+        }
+    }
+
+    @Test
     fun enroll_sends_session_profile_manifest_and_five_evidence_files() = runTest {
         var body = ""
         val api = api {
@@ -456,6 +495,41 @@ class FaceCheckApiTest {
         assertEquals(FaceCheckErrorCode.KEY_SERVICE_UNAVAILABLE, failure.code)
         assertTrue(failure.isRetryable)
         assertEquals(3, attempts, "expected the original attempt plus two retries")
+    }
+
+    @Test
+    fun a_retriable_failure_logs_only_the_structured_failure_envelope() = runTest {
+        val previousLevel = FaceCheckLogger.level
+        val previousSink = FaceCheckLogger.sink
+        val warningLines = mutableListOf<String>()
+        FaceCheckLogger.level = FaceCheckLogLevel.WARN
+        FaceCheckLogger.sink = FaceCheckLogSink { _, message -> warningLines += message }
+
+        try {
+            var attempts = 0
+            val api = api(maxRetries = 1) {
+                attempts++
+                respondJson(
+                    """{"error":{"code":"INTERNAL","message":"sensitive diagnostic payload"}}""",
+                    HttpStatusCode.InternalServerError,
+                )
+            }
+
+            assertFailsWith<FaceCheckException> { api.enroll("person_demo_01", SELFIE) }
+
+            assertEquals(2, attempts)
+            assertEquals(
+                listOf(
+                    "operation=enroll code=INTERNAL httpStatus=500 retryable=true",
+                    "operation=enroll code=INTERNAL httpStatus=500 retryable=true",
+                ),
+                warningLines,
+            )
+            assertFalse(warningLines.joinToString().contains("sensitive diagnostic payload"))
+        } finally {
+            FaceCheckLogger.level = previousLevel
+            FaceCheckLogger.sink = previousSink
+        }
     }
 
     @Test

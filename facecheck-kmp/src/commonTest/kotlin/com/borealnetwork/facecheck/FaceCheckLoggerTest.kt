@@ -1,6 +1,8 @@
 package com.borealnetwork.facecheck
 
+import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -10,6 +12,14 @@ import kotlin.test.assertTrue
 class FaceCheckLoggerTest {
 
     private val lines = mutableListOf<String>()
+    private lateinit var previousLevel: FaceCheckLogLevel
+    private lateinit var previousSink: FaceCheckLogSink
+
+    @BeforeTest
+    fun snapshotLogger() {
+        previousLevel = FaceCheckLogger.level
+        previousSink = FaceCheckLogger.sink
+    }
 
     private fun capture(at: FaceCheckLogLevel) {
         lines.clear()
@@ -19,7 +29,9 @@ class FaceCheckLoggerTest {
 
     @AfterTest
     fun tearDown() {
-        FaceCheckLogger.level = FaceCheckLogLevel.NONE
+        FaceCheck.shutdown()
+        FaceCheckLogger.level = previousLevel
+        FaceCheckLogger.sink = previousSink
     }
 
     @Test
@@ -92,5 +104,37 @@ class FaceCheckLoggerTest {
         FaceCheckLogger.debug { built++; "expensive" }
 
         assertEquals(0, built, "the lambda ran despite the level being off")
+    }
+
+    @Test
+    fun a_failure_diagnostic_emits_only_the_structured_fields() {
+        capture(FaceCheckLogLevel.DEBUG)
+
+        FaceCheckLogger.warnFailure(
+            operation = FaceCheckLogOperation.ENROLL,
+            code = FaceCheckErrorCode.INVALID_API_KEY,
+            httpStatus = 401,
+            retryable = false,
+        )
+
+        assertEquals(
+            "operation=enroll code=INVALID_API_KEY httpStatus=401 retryable=false",
+            lines.single(),
+        )
+    }
+
+    @Test
+    fun initialization_does_not_emit_the_configuration_payload() {
+        capture(FaceCheckLogLevel.DEBUG)
+
+        FaceCheck.initialize(
+            FaceCheckConfig(
+                apiKey = "lk_test_abcdefghijklmnopqrstuvwxyz",
+                baseUrl = "https://facecheck.example.com",
+                logLevel = FaceCheckLogLevel.DEBUG,
+            ),
+        )
+
+        assertEquals("FaceCheck initialized", lines.single())
     }
 }
