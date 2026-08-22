@@ -109,6 +109,13 @@ class ImmersiveSampleFlowTest {
 
     @Test
     fun `retry result hides the finalizing loading layer`() {
-        assertEquals(false, EnrollmentRetryPresentation.from(EnrollmentAttempt.first).showsLoading)
+        assertEquals(
+            false,
+            EnrollmentTerminalPresentation.failure(
+                attempt = EnrollmentAttempt.first,
+                code = "ENROLLMENT_INCOMPLETE",
+                message = "No pudimos completar el enrolamiento.",
+            ).showsLoading,
+        )
     }
 }

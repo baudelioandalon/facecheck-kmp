@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck
 
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
+import com.borealnetwork.facecheck.model.FaceCheckException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -110,11 +111,24 @@ class FaceCheckLoggerTest {
     fun a_failure_diagnostic_emits_only_the_structured_fields() {
         capture(FaceCheckLogLevel.DEBUG)
 
+        val failure = FaceCheckException(
+            code = FaceCheckErrorCode.INVALID_API_KEY,
+            message = "fake key=lk_live_not_a_real_key grant=fake-grant subject=fake-subject url=https://example.invalid/enroll?debug=fake image=fake-image",
+            httpStatus = 401,
+            details = mapOf(
+                "key" to "lk_live_not_a_real_key",
+                "grant" to "fake-grant",
+                "subjectId" to "fake-subject",
+                "url" to "https://example.invalid/enroll?debug=fake",
+                "image" to "fake-image",
+            ),
+        )
+
         FaceCheckLogger.warnFailure(
             operation = FaceCheckLogOperation.ENROLL,
-            code = FaceCheckErrorCode.INVALID_API_KEY,
-            httpStatus = 401,
-            retryable = false,
+            code = failure.code,
+            httpStatus = failure.httpStatus,
+            retryable = failure.isRetryable,
         )
 
         assertEquals(

@@ -186,7 +186,7 @@ class VisionFaceDetector(
         val error = alloc<ObjCObjectVar<NSError?>>()
         val ok = handler.performRequests(listOf(request), error.ptr)
         if (!ok) {
-            FaceCheckLogger.warn { "Vision request failed: ${error.value?.localizedDescription}" }
+            FaceCheckLogger.warn { "Vision request failed" }
             return@memScoped null
         }
         request.results.orEmpty().filterIsInstance<VNFaceObservation>()

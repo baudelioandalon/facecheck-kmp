@@ -307,9 +307,7 @@ class IosCameraController internal constructor(
             val error = alloc<ObjCObjectVar<NSError?>>()
             val created = AVCaptureDeviceInput.deviceInputWithDevice(device, error.ptr)
             if (created == null) {
-                FaceCheckLogger.error {
-                    "cannot open the camera: ${error.value?.localizedDescription}"
-                }
+                FaceCheckLogger.error { "cannot open the camera" }
             }
             created
         } ?: return cameraUnavailable(
@@ -556,7 +554,7 @@ private class PhotoDelegate(
         if (delivered) return
         delivered = true
         if (error != null) {
-            FaceCheckLogger.error { "photo capture failed: ${error.localizedDescription}" }
+            FaceCheckLogger.error { "photo capture failed" }
             onResult(null)
             return
         }

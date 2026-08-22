@@ -762,7 +762,7 @@ class VerifyActivity : ComponentActivity() {
         guidance: View,
         message: String?,
     ) {
-        val presentation = EnrollmentRetryPresentation.from(attempt)
+        val presentation = EnrollmentTerminalPresentation.from(attempt)
         val retry = presentation.nextAttempt
         cancelButton.visibility = View.INVISIBLE
         loading.visibility = if (presentation.showsLoading) View.VISIBLE else View.GONE

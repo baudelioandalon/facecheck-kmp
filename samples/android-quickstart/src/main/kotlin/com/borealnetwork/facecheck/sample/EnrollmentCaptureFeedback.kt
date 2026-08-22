@@ -29,15 +29,3 @@ internal class ChallengeCompletionFeedback {
         return true
     }
 }
-
-/** Terminal presentation for a failed save, where progress must no longer cover the retry card. */
-internal data class EnrollmentRetryPresentation(
-    val attempt: EnrollmentAttempt,
-    val showsLoading: Boolean = false,
-) {
-    val nextAttempt: EnrollmentAttempt? get() = attempt.retry()
-
-    companion object {
-        fun from(attempt: EnrollmentAttempt): EnrollmentRetryPresentation = EnrollmentRetryPresentation(attempt)
-    }
-}

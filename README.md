@@ -101,6 +101,10 @@ enrolamiento. Para verificar, la pantalla completa de selección contiene
 directorio del dueño de la app desde una llave incluida en el APK. Si tu producto
 necesita esa lista, sírvela desde tu backend autenticado.
 
+Antes de abrir la captura, el host debe pedir y recibir en runtime cámara,
+ubicación y acceso a imágenes. Declararlas en el manifest no basta para iniciar
+una sesión.
+
 ```kotlin
 // Una sola vez, al arrancar la app.
 FaceCheck.initialize(
