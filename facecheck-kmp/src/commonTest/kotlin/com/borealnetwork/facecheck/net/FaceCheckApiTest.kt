@@ -82,6 +82,8 @@ private const val VERIFY_BODY = """
     "faceMatch": false, "ineMatch": true,
     "liveness": null, "livenessEnforced": false
   },
+  "similarity": 0.61,
+  "ineSimilarity": 0.77,
   "spoofScore": null,
   "faceQuality": null,
   "verificationId": "vrf_123"
@@ -170,6 +172,9 @@ class FaceCheckApiTest {
         assertEquals(false, result.checks.faceMatch)
         assertEquals(true, result.checks.ineMatch)
         assertEquals(CompareWith.BOTH, result.compareWith)
+        assertEquals(0.61, result.similarity)
+        assertEquals(0.77, result.ineSimilarity)
+        assertEquals("vrf_123", result.verificationId)
         assertEquals("El rostro no coincide con el registrado.", result.messageEs)
     }
 

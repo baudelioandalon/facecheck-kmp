@@ -19,14 +19,10 @@ data class VerifyChecks(
 /**
  * The `/verify` response body.
  *
- * There is deliberately no similarity score here, and adding one later would be
- * a security regression rather than a feature. A score, together with the
- * threshold it is compared against, turns `/verify` into a distance oracle:
- * whoever holds the API key can optimise a face morph against the returned
- * number and climb to `verified = true` against a template they have never
- * seen — and the converged image approximately reconstructs the enrolled face.
- * The scores are still written to the tenant's dashboard, where the person
- * being probed cannot read them.
+ * [similarity] and [ineSimilarity] are server-calculated, normalized values in
+ * `0..1` returned after the comparison. They are result data for the host app,
+ * not client-side decision inputs. The response never includes tenant
+ * thresholds, embeddings, images or storage paths.
  */
 @Serializable
 data class VerifyResult(
@@ -38,6 +34,10 @@ data class VerifyResult(
     @SerialName("compareWith")
     val compareWithWire: String = CompareWith.ENROLLMENT.wire,
     val checks: VerifyChecks = VerifyChecks(),
+    /** Selfie-to-enrollment similarity; null when that comparison did not run. */
+    val similarity: Double? = null,
+    /** Selfie-to-ID similarity; null when no ID comparison ran. */
+    val ineSimilarity: Double? = null,
     val faceQuality: FaceQuality? = null,
     val verificationId: String = "",
     /** Telemetry only, currently always null. See [EnrollResult.spoofScore]. */

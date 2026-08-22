@@ -121,7 +121,8 @@ internal class FaceCheckApi(
     /**
      * `POST /verify`.
      *
-     * The response carries no similarity score by design; see [VerifyResult].
+     * The response carries normalized comparison values and no tenant threshold
+     * or biometric template; see [VerifyResult].
      */
     override suspend fun verify(
         subjectId: String,

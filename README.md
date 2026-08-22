@@ -272,14 +272,13 @@ documental automática.
 
 - **La llave de API no es un secreto.** Va dentro de un APK o un IPA. El backend
   está diseñado sobre esa premisa: reemplazar un registro exige además una
-  selfie que ya coincida con la plantilla guardada, y `/verify` no regresa
-  score. No agregues controles que supongan que la llave es confidencial.
-- **`/verify` no devuelve similitud, y no la va a devolver.** Un score junto con
-  su umbral convierte el endpoint en un oráculo de distancia: quien tenga la
-  llave puede optimizar un morph contra ese número hasta llegar a
-  `verified = true` contra una plantilla que nunca vio — y la imagen resultante
-  reconstruye aproximadamente el rostro registrado. Los scores sí quedan en el
-  dashboard del tenant, donde la persona a la que se está sondeando no los lee.
+  selfie que ya coincida con la plantilla guardada. No agregues controles que
+  supongan que la llave es confidencial.
+- **`/verify` devuelve el resultado de comparación.** `VerifyResult` incluye
+  `verificationId`, `similarity` e `ineSimilarity` normalizados de `0..1` cuando
+  la comparación correspondiente corrió. No incluye umbrales del tenant,
+  embeddings, imágenes ni rutas de Storage; trata esos valores como datos de
+  resultado sensibles y deja la decisión final al backend.
 - **La sesión está fijada en vertical.** Bloquea tu pantalla en portrait.
 - **Los textos para el usuario final están en español** (`instructionEs`,
   `messageEs`, `hintEs`). No hay localización todavía.

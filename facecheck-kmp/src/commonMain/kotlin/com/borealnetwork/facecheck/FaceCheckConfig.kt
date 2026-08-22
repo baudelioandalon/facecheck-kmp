@@ -20,10 +20,11 @@ enum class FaceCheckMode(val wire: String) {
  * ### The API key is not a secret
  *
  * It ships inside an app the SDK's users install, so anyone willing to unzip an
- * APK has it. The backend is built on that assumption — which is why replacing
- * an enrollment needs a matching face rather than just a valid key, and why
- * `/verify` returns no similarity score. Do not add controls here that assume
- * the key is confidential; put them in the backend, where they hold.
+ * APK has it. The backend is built on that assumption — replacing an enrollment
+ * needs a matching face rather than just a valid key. [VerifyResult] may carry
+ * normalized comparison scores, but never tenant thresholds or templates. Do
+ * not add controls here that assume the key is confidential; put them in the
+ * backend, where they hold.
  *
  * ### Thresholds are not here
  *
