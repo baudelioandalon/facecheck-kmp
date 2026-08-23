@@ -5,9 +5,11 @@ import android.content.res.ColorStateList
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -47,6 +49,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** Runnable Android quickstart with a realistic, guided enrolment and verification flow. */
 class VerifyActivity : ComponentActivity() {
@@ -363,49 +368,137 @@ class VerifyActivity : ComponentActivity() {
         val column = screenColumn()
         column.addView(title("Verificar una identidad"))
         column.addView(
-            body("Selecciona un ID de persona enrolado por este sample en este dispositivo."),
+            body("Selecciona una persona enrolada en este dispositivo. Las tarjetas muestran cuándo se registró el rostro cuando ese dato existe localmente."),
         )
         addSpace(column, 20)
-        column.addView(sectionTitle("IDs enrolados en este dispositivo"))
-        val subjects = knownSubjects()
+        column.addView(sectionTitle("Personas enroladas"))
+        val subjects = knownSubjectRecords()
         val subjectsWithIne = knownSubjectsWithIne()
         if (subjects.isEmpty()) {
             column.addView(body("Todavía no hay rostros enrolados desde este teléfono."))
         } else {
-            subjects.forEach { subjectId ->
-                val hasIne = subjectId in subjectsWithIne
-                addSpace(column, 8)
-                column.addView(sectionTitle(subjectId))
-                if (hasIne) {
-                    column.addView(status("Ya cuenta con INE", Color.rgb(23, 108, 60)))
-                    addSpace(column, 6)
-                }
-                column.addView(primaryButton("Verificar identidad") {
-                    renderCameraPreflight(
-                        ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, subjectId),
-                    )
-                })
-                addSpace(column, 6)
-                if (hasIne) {
-                    column.addView(secondaryButton("Quitar INE de este teléfono") {
-                        forgetSubjectIne(subjectId)
-                        renderVerificationDirectory()
-                    })
-                } else {
-                    column.addView(secondaryButton("Agregar INE") {
-                        renderDocumentCapture(subjectId)
-                    })
-                }
-                addSpace(column, 6)
-                column.addView(secondaryButton("Quitar enrolado de este teléfono") {
-                    forgetSubject(subjectId)
-                    renderVerificationDirectory()
-                })
+            subjects.forEachIndexed { index, subject ->
+                addSpace(column, 12)
+                column.addView(
+                    verificationSubjectCard(
+                        subject = subject,
+                        hasIne = subject.subjectId in subjectsWithIne,
+                        index = index,
+                    ),
+                    fullWidth(),
+                )
             }
         }
         addSpace(column, 24)
         column.addView(secondaryButton("Volver") { renderHome() })
         installColumn(column)
+    }
+
+    private fun verificationSubjectCard(
+        subject: SubjectEnrollmentRecord,
+        hasIne: Boolean,
+        index: Int,
+    ): View {
+        val accent = if (hasIne) Color.rgb(23, 142, 92) else Color.rgb(74, 101, 133)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28, 24, 28, 24)
+            alpha = 0f
+            translationY = 22f
+            elevation = 8f
+            background = GradientDrawable().apply {
+                cornerRadius = 30f
+                setColor(Color.WHITE)
+                setStroke(1, Color.rgb(226, 232, 240))
+            }
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val identity = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        identity.addView(TextView(this).apply {
+            text = subject.subjectId
+            textSize = 17f
+            typeface = Typeface.MONOSPACE
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.MIDDLE
+            setTextColor(Color.rgb(17, 24, 39))
+        }, fullWidth())
+        identity.addView(TextView(this).apply {
+            text = enrollmentDateLabel(subject.enrolledAtMs)
+            textSize = 13f
+            setPadding(0, 8, 0, 0)
+            setTextColor(Color.rgb(100, 116, 139))
+        }, fullWidth())
+        header.addView(
+            identity,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        header.addView(TextView(this).apply {
+            text = if (hasIne) "INE lista" else "Sin INE"
+            textSize = 12f
+            setTextColor(accent)
+            setPadding(18, 8, 18, 8)
+            background = GradientDrawable().apply {
+                cornerRadius = 100f
+                setColor(Color.argb(24, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                setStroke(1, Color.argb(96, Color.red(accent), Color.green(accent), Color.blue(accent)))
+            }
+        })
+        card.addView(header, fullWidth())
+
+        addSpace(card, 18)
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        actions.addView(
+            primaryButton("Verificar") {
+                renderCameraPreflight(
+                    ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, subject.subjectId),
+                )
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        actions.addView(Space(this), LinearLayout.LayoutParams(12, 1))
+        actions.addView(
+            secondaryButton(if (hasIne) "Quitar INE" else "Agregar INE") {
+                if (hasIne) {
+                    forgetSubjectIne(subject.subjectId)
+                    renderVerificationDirectory()
+                } else {
+                    renderDocumentCapture(subject.subjectId)
+                }
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        card.addView(actions, fullWidth())
+
+        addSpace(card, 10)
+        card.addView(secondaryButton("Quitar enrolado") {
+            forgetSubject(subject.subjectId)
+            renderVerificationDirectory()
+        }, fullWidth())
+
+        card.post {
+            card.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay((index * 55L).coerceAtMost(330L))
+                .setDuration(240L)
+                .start()
+        }
+        return card
+    }
+
+    private fun enrollmentDateLabel(enrolledAtMs: Long?): String {
+        if (enrolledAtMs == null) return "Fecha de enrolamiento no disponible"
+        val formatter = SimpleDateFormat("dd MMM yyyy · HH:mm", Locale.forLanguageTag("es-MX"))
+        return "Enrolado ${formatter.format(Date(enrolledAtMs))}"
     }
 
     private fun renderCapture(
@@ -556,7 +649,7 @@ class VerifyActivity : ComponentActivity() {
                     }
                 }
                 if (succeeded && screen.operation == SampleOperation.ENROLL) {
-                    rememberSubject(screen.subjectId)
+                    rememberSubject(screen.subjectId, Clock.System.now().toEpochMilliseconds())
                 }
                 if (!succeeded && screen.operation == SampleOperation.ENROLL) {
                     enrollmentFailed = true
@@ -1271,6 +1364,7 @@ class VerifyActivity : ComponentActivity() {
                     back = checkNotNull(backBytes),
                 ),
             )
+            rememberSubjectIne(screen.subjectId)
             if (sessionId == activeCaptureId) {
                 renderDocumentComplete(frame, subjectId = screen.subjectId)
             }
@@ -1503,21 +1597,43 @@ class VerifyActivity : ComponentActivity() {
         )
     }
 
-    private fun rememberSubject(subjectId: String) {
+    private fun knownSubjectRecords(): List<SubjectEnrollmentRecord> {
+        val preferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val subjects = knownSubjects()
+        val records = LocalSubjectEnrollmentMetadata.read(
+            storedMetadata = preferences.getString(SUBJECT_METADATA_KEY, "").orEmpty(),
+            legacySubjects = subjects,
+        )
+        val serialized = LocalSubjectEnrollmentMetadata.serialize(records)
+        if (preferences.getString(SUBJECT_METADATA_KEY, "").orEmpty() != serialized) {
+            preferences.edit().putString(SUBJECT_METADATA_KEY, serialized).apply()
+        }
+        return records
+    }
+
+    private fun rememberSubject(subjectId: String, enrolledAtMs: Long) {
         val remembered = LocalSubjectDirectory.remember(knownSubjects(), subjectId)
+        val metadata = LocalSubjectEnrollmentMetadata.remember(
+            existing = knownSubjectRecords(),
+            subjectId = subjectId,
+            enrolledAtMs = enrolledAtMs,
+        )
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(SUBJECTS_KEY, remembered.joinToString("\n"))
+            .putString(SUBJECT_METADATA_KEY, LocalSubjectEnrollmentMetadata.serialize(metadata))
             .apply()
     }
 
     private fun forgetSubject(subjectId: String) {
         val updatedSubjects = knownSubjects().filterNot { it == subjectId }
         val updatedDocuments = LocalSubjectDocuments.forget(knownSubjectsWithIne().toList(), subjectId)
+        val updatedMetadata = LocalSubjectEnrollmentMetadata.forget(knownSubjectRecords(), subjectId)
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(SUBJECTS_KEY, updatedSubjects.joinToString("\n"))
             .putString(SUBJECTS_WITH_INE_KEY, updatedDocuments.joinToString("\n"))
+            .putString(SUBJECT_METADATA_KEY, LocalSubjectEnrollmentMetadata.serialize(updatedMetadata))
             .apply()
     }
 
@@ -1533,9 +1649,18 @@ class VerifyActivity : ComponentActivity() {
 
     private fun rememberSubjectIne(subjectId: String) {
         val remembered = LocalSubjectDocuments.remember(knownSubjectsWithIne().toList(), subjectId)
+        val rememberedSubjects = LocalSubjectDirectory.remember(knownSubjects(), subjectId)
+        val metadata = LocalSubjectEnrollmentMetadata.read(
+            storedMetadata = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .getString(SUBJECT_METADATA_KEY, "")
+                .orEmpty(),
+            legacySubjects = rememberedSubjects,
+        )
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
+            .putString(SUBJECTS_KEY, rememberedSubjects.joinToString("\n"))
             .putString(SUBJECTS_WITH_INE_KEY, remembered.joinToString("\n"))
+            .putString(SUBJECT_METADATA_KEY, LocalSubjectEnrollmentMetadata.serialize(metadata))
             .apply()
     }
 
@@ -1712,5 +1837,6 @@ class VerifyActivity : ComponentActivity() {
         const val PREFERENCES = "facecheck_sample"
         const val SUBJECTS_KEY = "enrolled_subjects"
         const val SUBJECTS_WITH_INE_KEY = "enrolled_subjects_with_ine"
+        const val SUBJECT_METADATA_KEY = "enrolled_subject_metadata"
     }
 }

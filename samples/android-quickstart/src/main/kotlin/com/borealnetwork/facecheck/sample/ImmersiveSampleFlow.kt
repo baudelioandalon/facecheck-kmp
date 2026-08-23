@@ -3,7 +3,7 @@ package com.borealnetwork.facecheck.sample
 import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.ModelProfileSummary
 
-private val sampleSubjectIdPattern = Regex("^[A-Za-z][A-Za-z0-9_-]{7,127}$")
+internal val sampleSubjectIdPattern = Regex("^[A-Za-z][A-Za-z0-9_-]{7,127}$")
 
 internal enum class SampleOperation {
     ENROLL,
