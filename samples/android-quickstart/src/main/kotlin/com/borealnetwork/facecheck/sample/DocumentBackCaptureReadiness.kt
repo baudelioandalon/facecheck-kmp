@@ -25,6 +25,7 @@ internal class DocumentBackCaptureReadiness(
                 instruction = blocking,
                 progress = 0f,
                 isReady = false,
+                hasCardSignal = false,
                 remainingSeconds = ceil(requiredHoldMs / 1_000.0).toInt(),
             )
         }
@@ -43,6 +44,7 @@ internal class DocumentBackCaptureReadiness(
             },
             progress = progress,
             isReady = isReady,
+            hasCardSignal = true,
             remainingSeconds = ceil(remainingMs / 1_000.0).toInt(),
         )
     }
@@ -51,12 +53,14 @@ internal class DocumentBackCaptureReadiness(
         val instruction: String,
         val progress: Float,
         val isReady: Boolean,
+        val hasCardSignal: Boolean,
         val remainingSeconds: Int,
     ) {
         val stepLabel: String = if (isReady) "Reverso de la INE listo" else "Alineando reverso"
     }
 
     private fun FaceFrame.blockingInstruction(): String? = when {
+        faceCount > 0 -> "Ese parece el frente; gira la INE y muestra el reverso"
         quality.sharpness < MIN_SHARPNESS -> "Acércala un poco o mejora la nitidez"
         quality.brightness < MIN_BRIGHTNESS -> "Busca más luz para leer el reverso"
         quality.brightness > MAX_BRIGHTNESS -> "Hay demasiada luz; evita los reflejos"

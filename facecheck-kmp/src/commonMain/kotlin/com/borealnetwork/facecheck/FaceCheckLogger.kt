@@ -101,6 +101,7 @@ enum class FaceCheckLogOperation(internal val wire: String) {
     INE_ATTACHMENT("ine_attachment"),
     VERIFY("verify"),
     MODEL_PROFILES("model_profiles"),
+    ENCRYPTION_KEY("encryption_key"),
     LIVENESS_SESSION("liveness_session"),
 }
 

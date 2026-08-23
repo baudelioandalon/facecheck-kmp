@@ -23,10 +23,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
-import io.ktor.client.request.forms.FormBuilder
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
-import io.ktor.client.request.header
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -69,6 +67,9 @@ internal class FaceCheckApi(
     private val random: Random = Random.Default,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : FaceCheckBackend {
+    private val apiKeyFingerprint: String = sha256Hex(config.apiKey.encodeToByteArray()).take(8)
+    private var cachedEncryptionKey: RequestEncryptionKey? = null
+
     private val json = Json {
         // A backend that starts returning one more field must not break apps
         // already in the field; there is no update path for a shipped SDK.
@@ -274,9 +275,11 @@ internal class FaceCheckApi(
         path: String,
         operation: FaceCheckLogOperation,
     ): T {
+        logRequest(operation, "GET", path)
         val response = client.get(config.endpoint(path)) {
             header(API_KEY_HEADER, config.apiKey)
         }
+        logResponse(operation, response)
         if (response.status.isSuccess()) return decodeBody(response, operation)
         val error = response.toException()
         logFailure(operation, error)
@@ -288,11 +291,20 @@ internal class FaceCheckApi(
         body: String,
         operation: FaceCheckLogOperation,
     ): T {
+        val encryptionKey = requestEncryptionKey()
+        val encryptedBody = json.encodeToString(
+            EncryptedJsonRequest(
+                keyId = encryptionKey.keyId,
+                encryptedPayload = RequestEncryption.encrypt(body.encodeToByteArray(), encryptionKey),
+            ),
+        )
+        logRequest(operation, "POST", path)
         val response = client.post(config.endpoint(path)) {
             header(API_KEY_HEADER, config.apiKey)
             contentType(ContentType.Application.Json)
-            setBody(body)
+            setBody(encryptedBody)
         }
+        logResponse(operation, response)
         if (response.status.isSuccess()) return decodeBody(response, operation)
         val error = response.toException()
         logFailure(operation, error)
@@ -313,14 +325,17 @@ internal class FaceCheckApi(
     private suspend inline fun <reified T> post(
         path: String,
         operation: FaceCheckLogOperation,
-        crossinline parts: FormBuilder.() -> Unit,
+        crossinline parts: RequestPartCollector.() -> Unit,
     ): T {
         var attempt = 0
         while (true) {
+            val encryptionKey = requestEncryptionKey()
+            val requestParts = RequestPartCollector().apply { parts() }
             val response = try {
+                logRequest(operation, "POST", path, attempt)
                 client.submitFormWithBinaryData(
                     url = config.endpoint(path),
-                    formData = formData { parts() },
+                    formData = encryptedFormData(requestParts, encryptionKey),
                 ) {
                     header(API_KEY_HEADER, config.apiKey)
                 }
@@ -340,18 +355,53 @@ internal class FaceCheckApi(
                 throw transport
             }
 
+            logResponse(operation, response, attempt)
             if (response.status.isSuccess()) {
                 return decodeBody(response, operation)
             }
 
             val error = response.toException()
             logFailure(operation, error)
+            if (error.code == FaceCheckErrorCode.ENCRYPTION_KEY_STALE) {
+                cachedEncryptionKey = null
+            }
             if (response.status.value >= HTTP_SERVER_ERROR && attempt < config.maxRetries) {
                 sleep(backoffMs(attempt))
                 attempt++
                 continue
             }
             throw error
+        }
+    }
+
+    private suspend fun requestEncryptionKey(): RequestEncryptionKey {
+        cachedEncryptionKey?.let { return it }
+        return getJson<RequestEncryptionKey>(
+            ENCRYPTION_KEY_PATH,
+            FaceCheckLogOperation.ENCRYPTION_KEY,
+        ).also { cachedEncryptionKey = it }
+    }
+
+    private fun encryptedFormData(
+        parts: RequestPartCollector,
+        encryptionKey: RequestEncryptionKey,
+    ) = formData {
+        append("encryptionKeyId", encryptionKey.keyId)
+        parts.fields.forEach { field ->
+            append(
+                field.name,
+                json.encodeToString(RequestEncryption.encrypt(field.value.encodeToByteArray(), encryptionKey)),
+            )
+        }
+        parts.files.forEach { file ->
+            append(
+                key = file.name,
+                value = json.encodeToString(RequestEncryption.encrypt(file.bytes, encryptionKey)).encodeToByteArray(),
+                headers = Headers.build {
+                    append(HttpHeaders.ContentType, "application/json")
+                    append(HttpHeaders.ContentDisposition, "form-data; name=\"${file.name}\"; filename=\"${file.filename}.json\"")
+                },
+            )
         }
     }
 
@@ -382,6 +432,30 @@ internal class FaceCheckApi(
             httpStatus = failure.httpStatus,
             retryable = failure.isRetryable,
         )
+    }
+
+    private fun logRequest(
+        operation: FaceCheckLogOperation,
+        method: String,
+        path: String,
+        attempt: Int? = null,
+    ) {
+        FaceCheckLogger.debug {
+            "operation=${operation.wire} request=started method=$method path=$path " +
+                "baseUrl=${config.normalizedBaseUrl} keySha8=$apiKeyFingerprint " +
+                "attempt=${attempt ?: 0}"
+        }
+    }
+
+    private fun logResponse(
+        operation: FaceCheckLogOperation,
+        response: HttpResponse,
+        attempt: Int? = null,
+    ) {
+        FaceCheckLogger.debug {
+            "operation=${operation.wire} response status=${response.status.value} " +
+                "attempt=${attempt ?: 0}"
+        }
     }
 
     /** Parse the `{"error":{"code","message","details"}}` envelope. */
@@ -434,6 +508,7 @@ internal class FaceCheckApi(
         const val VERIFY_PATH = "verify"
         const val ATTACH_INE_PATH = "attachIne"
         const val VALIDATE_INE_FRONT_PATH = "validateIneFront"
+        const val ENCRYPTION_KEY_PATH = "encryptionKey"
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
         const val SDK_PLATFORM = "kmp"
@@ -490,23 +565,20 @@ private fun requireSession(session: LivenessSessionDescriptor, operation: String
     )
 }
 
-/**
- * Attach an image part the backend will accept.
- *
- * Both headers are mandatory, not decoration: `read_image_upload` rejects any
- * part whose declared content type is not in its allow-list, and treats a part
- * with no filename as absent entirely — an upload missing either one comes back
- * as `MISSING_FILE` with a perfectly valid image sitting in the body.
- */
-private fun FormBuilder.appendImage(field: String, bytes: ByteArray, filename: String = "$field.jpg") {
-    append(
-        key = field,
-        value = bytes,
-        headers = Headers.build {
-            append(HttpHeaders.ContentType, "image/jpeg")
-            append(HttpHeaders.ContentDisposition, "form-data; name=\"$field\"; filename=\"$filename\"")
-        },
-    )
+private class RequestPartCollector {
+    val fields = mutableListOf<Field>()
+    val files = mutableListOf<File>()
+
+    fun append(key: String, value: String) {
+        fields += Field(key, value)
+    }
+
+    fun appendImage(field: String, bytes: ByteArray, filename: String = "$field.jpg") {
+        files += File(field, bytes, filename)
+    }
+
+    data class Field(val name: String, val value: String)
+    data class File(val name: String, val bytes: ByteArray, val filename: String)
 }
 
 /** Render a details value as a flat string, dropping nulls and nested objects. */

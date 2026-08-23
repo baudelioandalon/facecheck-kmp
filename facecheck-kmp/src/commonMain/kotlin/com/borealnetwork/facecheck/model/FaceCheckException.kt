@@ -80,6 +80,24 @@ enum class FaceCheckErrorCode(
         "El servicio de verificación de llaves no está disponible. Intenta de nuevo.",
         isRetryable = true,
     ),
+    ENCRYPTED_REQUEST_REQUIRED(
+        "ENCRYPTED_REQUEST_REQUIRED",
+        "La solicitud debe enviarse cifrada. Actualiza la configuración del SDK.",
+    ),
+    ENCRYPTED_REQUEST_INVALID(
+        "ENCRYPTED_REQUEST_INVALID",
+        "No se pudo descifrar la solicitud. Vuelve a sincronizar la clave pública.",
+    ),
+    ENCRYPTION_KEY_STALE(
+        "ENCRYPTION_KEY_STALE",
+        "La clave de cifrado ya no está vigente. Sincroniza la clave pública e intenta de nuevo.",
+        isRetryable = true,
+    ),
+    ENCRYPTION_KEY_UNAVAILABLE(
+        "ENCRYPTION_KEY_UNAVAILABLE",
+        "No hay una clave de cifrado configurada para esta aplicación.",
+        isRetryable = true,
+    ),
 
     // --- Request shape -------------------------------------------------------
     MISSING_SUBJECT_ID("MISSING_SUBJECT_ID", "Falta el identificador del sujeto."),

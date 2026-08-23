@@ -15,21 +15,36 @@ class DocumentBackCaptureReadinessTest {
 
         val dark = readiness.onFrame(frame(timestampMs = 0L, brightness = 30f))
         assertFalse(dark.isReady)
+        assertFalse(dark.hasCardSignal)
         assertEquals("Busca más luz para leer el reverso", dark.instruction)
 
         val waiting = readiness.onFrame(frame(timestampMs = 1_000L))
         assertFalse(waiting.isReady)
+        assertTrue(waiting.hasCardSignal)
         assertEquals("Alineando reverso", waiting.stepLabel)
 
         val ready = readiness.onFrame(frame(timestampMs = DocumentBackCaptureReadiness.STABLE_HOLD_MS + 1_000L))
         assertTrue(ready.isReady)
+        assertTrue(ready.hasCardSignal)
         assertEquals("Reverso de la INE listo", ready.stepLabel)
+    }
+
+    @Test
+    fun `back capture does not unlock when the front portrait is detected`() {
+        val readiness = DocumentBackCaptureReadiness()
+
+        val state = readiness.onFrame(frame(timestampMs = 0L, faceCount = 1))
+
+        assertFalse(state.isReady)
+        assertFalse(state.hasCardSignal)
+        assertEquals("Ese parece el frente; gira la INE y muestra el reverso", state.instruction)
     }
 
     private fun frame(
         timestampMs: Long,
         sharpness: Float = 200f,
         brightness: Float = 120f,
+        faceCount: Int = 0,
     ): FaceFrame = FaceFrame(
         yaw = 0f,
         pitch = 0f,
@@ -44,7 +59,7 @@ class DocumentBackCaptureReadinessTest {
             brightness = brightness,
             detectorScore = 0.99f,
         ),
-        faceCount = 0,
+        faceCount = faceCount,
         insideGuide = false,
     )
 }

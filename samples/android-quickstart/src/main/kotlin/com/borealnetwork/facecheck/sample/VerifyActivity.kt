@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.SoundEffectConstants
@@ -27,6 +28,8 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.borealnetwork.facecheck.FaceCheck
+import com.borealnetwork.facecheck.FaceCheckLogSink
+import com.borealnetwork.facecheck.FaceCheckLogger
 import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.camera.AndroidCameraController
 import com.borealnetwork.facecheck.camera.CameraHost
@@ -91,6 +94,9 @@ class VerifyActivity : ComponentActivity() {
     private fun configureFaceCheck() {
         if (BuildConfig.FACECHECK_API_KEY.isBlank()) return
         try {
+            FaceCheckLogger.sink = FaceCheckLogSink { level, message ->
+                Log.println(Log.DEBUG, "FaceCheck", "[${level.name}] $message")
+            }
             FaceCheck.initialize(
                 sampleFaceCheckConfig(
                     apiKey = BuildConfig.FACECHECK_API_KEY,
@@ -1007,10 +1013,18 @@ class VerifyActivity : ComponentActivity() {
             progressBackgroundTintList = ColorStateList.valueOf(Color.rgb(52, 72, 80))
             setPadding(0, 24, 0, 0)
         }
+        val forceBackCaptureButton = Button(this).apply {
+            text = "TOMAR REVERSO"
+            visibility = View.GONE
+            isEnabled = false
+            alpha = 0.45f
+        }
         guidance.addView(step)
         guidance.addView(instruction)
         guidance.addView(status)
         guidance.addView(progress, LinearLayout.LayoutParams(MATCH, 12))
+        addSpace(guidance, 18)
+        guidance.addView(forceBackCaptureButton, fullWidth())
         frame.addView(guidance, FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         val documentLoading = loadingOverlay(SampleOperation.ENROLL)
         frame.addView(documentLoading.root, matchParent())
@@ -1047,6 +1061,12 @@ class VerifyActivity : ComponentActivity() {
             val frontReady = frontBytes != null
             val backReady = backBytes != null
             val currentState = readinessState
+            val canForceBackCapture = frontReady &&
+                !backReady &&
+                !isUploading &&
+                !frontValidationInProgress &&
+                !backCaptureStarted &&
+                backReadinessState?.hasCardSignal == true
             val automation = DocumentCaptureAutomation.State(
                 frontCaptured = frontReady,
                 backCaptured = backReady,
@@ -1072,6 +1092,7 @@ class VerifyActivity : ComponentActivity() {
                     if (it.isReady) "El frente de la INE ya está listo."
                     else "Alinea el documento y espera a que el frente se estabilice."
                 } ?: "Alinea el documento dentro del rectángulo."
+                !backReady && backReadinessState?.hasCardSignal == true -> "Detectamos una tarjeta. Si no se toma sola, toca Tomar reverso."
                 !backReady -> "La foto del reverso se tomará automáticamente cuando esté legible dentro del rectángulo."
                 else -> "Enviando automáticamente…"
             }
@@ -1082,6 +1103,13 @@ class VerifyActivity : ComponentActivity() {
                 else -> 100
             }
             cancelButton.visibility = if (isUploading || frontValidationInProgress) View.INVISIBLE else View.VISIBLE
+            forceBackCaptureButton.visibility = if (frontReady && !backReady && !isUploading && !frontValidationInProgress) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+            forceBackCaptureButton.isEnabled = canForceBackCapture
+            forceBackCaptureButton.alpha = if (canForceBackCapture) 1f else 0.45f
             documentLoading.render(
                 CaptureLoadingPresentation(
                     title = if (frontValidationInProgress) "Validando rostro…" else "Guardando INE…",
@@ -1245,6 +1273,13 @@ class VerifyActivity : ComponentActivity() {
             )
             if (sessionId == activeCaptureId) {
                 renderDocumentComplete(frame, subjectId = screen.subjectId)
+            }
+        }
+
+        forceBackCaptureButton.setOnClickListener {
+            if (!forceBackCaptureButton.isEnabled) return@setOnClickListener
+            lifecycleScope.launch {
+                captureBackAndUpload()
             }
         }
 

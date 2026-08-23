@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.sample
 
 import com.borealnetwork.facecheck.FaceCheckConfig
+import com.borealnetwork.facecheck.FaceCheckLogLevel
 
 /** The quickstart's one SDK configuration for both enrollment and verification. */
 internal fun sampleFaceCheckConfig(
@@ -12,4 +13,5 @@ internal fun sampleFaceCheckConfig(
     baseUrl = baseUrl,
     livenessTimeoutMs = livenessTimeoutMs,
     liveness = EnrollmentSessionPolicy.livenessConfig,
+    logLevel = FaceCheckLogLevel.DEBUG,
 )
