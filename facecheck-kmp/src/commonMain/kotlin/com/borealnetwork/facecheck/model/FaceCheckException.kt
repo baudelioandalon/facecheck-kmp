@@ -111,6 +111,10 @@ enum class FaceCheckErrorCode(
         "No se detectó el rostro en la identificación. Tómala de frente, sin reflejos y " +
             "con la credencial completa.",
     ),
+    INE_MISMATCH(
+        "INE_MISMATCH",
+        "El rostro de la INE no coincide con el rostro enrolado.",
+    ),
 
     // --- Subject lifecycle ---------------------------------------------------
     NOT_ENROLLED(

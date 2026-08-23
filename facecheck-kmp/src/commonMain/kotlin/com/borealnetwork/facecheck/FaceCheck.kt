@@ -12,6 +12,7 @@ import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import com.borealnetwork.facecheck.model.IdentityDocument
+import com.borealnetwork.facecheck.model.IneFrontValidationResult
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -235,6 +236,14 @@ object FaceCheck {
         subjectId = subjectId,
         document = document,
         grant = grant,
+    )
+
+    suspend fun validateIneFront(
+        subjectId: String,
+        front: ByteArray,
+    ): IneFrontValidationResult = requireApi().validateIneFront(
+        subjectId = subjectId,
+        front = front,
     )
 
     private fun requireConfig(): FaceCheckConfig = activeConfig

@@ -406,6 +406,37 @@ class FaceCheckApiTest {
         assertFalse(body.contains("name=\"ine\""), "legacy single-file INE part: $body")
     }
 
+    @Test
+    fun validate_ine_front_returns_similarity_before_the_back_capture() = runTest {
+        var body = ""
+        val api = api {
+            body = it.body.readAsText()
+            respondJson(
+                """
+                {
+                  "subjectId":"person_demo_01",
+                  "matched":true,
+                  "matchScore":0.91,
+                  "similarityPercent":91.0,
+                  "validatedBy":"server",
+                  "validatedAt":"2026-08-23T12:00:00+00:00",
+                  "modelProfileId":"arcface-w600k-mbf-r1",
+                  "embeddingSchemaId":"arcface-w600k-mbf-r1:512"
+                }
+                """.trimIndent(),
+            )
+        }
+
+        val result = api.validateIneFront("person_demo_01", INE_FRONT)
+
+        assertTrue(result.matched)
+        assertEquals(91.0, result.similarityPercent)
+        assertContains(body, "subjectId")
+        assertContains(body, "person_demo_01")
+        assertContains(body, "name=\"ineFront\"")
+        assertContains(body, INE_FRONT.decodeToString())
+    }
+
     // --- Errors ---------------------------------------------------------------
 
     @Test

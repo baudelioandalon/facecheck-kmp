@@ -109,3 +109,31 @@ internal object LocalSubjectDirectory {
     private fun String.normalizedSubjectId(): String? = trim()
         .takeIf(sampleSubjectIdPattern::matches)
 }
+
+internal object LocalSubjectDocuments {
+    fun readAndMigrate(
+        readStoredSubjects: () -> String,
+        persistSubjects: (String) -> Unit,
+    ): Set<String> {
+        val storedSubjects = readStoredSubjects()
+        val normalizedSubjects = normalizedDistinct(storedSubjects.lineSequence().toList())
+        val persistedSubjects = normalizedSubjects.joinToString("\n")
+        if (storedSubjects != persistedSubjects) persistSubjects(persistedSubjects)
+        return normalizedSubjects.toSet()
+    }
+
+    fun remember(existing: List<String>, subjectId: String): Set<String> =
+        normalizedDistinct(listOf(subjectId) + existing).toSet()
+
+    fun forget(existing: List<String>, subjectId: String): Set<String> {
+        val normalized = subjectId.normalizedSubjectId() ?: return normalizedDistinct(existing).toSet()
+        return normalizedDistinct(existing).filterNot { it == normalized }.toSet()
+    }
+
+    private fun normalizedDistinct(values: List<String>): List<String> = values
+        .mapNotNull { it.normalizedSubjectId() }
+        .distinct()
+
+    private fun String.normalizedSubjectId(): String? = trim()
+        .takeIf(sampleSubjectIdPattern::matches)
+}

@@ -9,6 +9,7 @@ import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import com.borealnetwork.facecheck.model.IdentityDocument
+import com.borealnetwork.facecheck.model.IneFrontValidationResult
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.ModelProfileSummary
@@ -133,6 +134,11 @@ private class FakeSessionBackend(
         document: IdentityDocument,
         grant: String?,
     ): EnrollResult = error("legacy document attachment should not be used by prepared sessions")
+
+    override suspend fun validateIneFront(
+        subjectId: String,
+        front: ByteArray,
+    ): IneFrontValidationResult = error("document front validation should not be used by prepared sessions")
 
     override fun close() = Unit
 }

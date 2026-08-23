@@ -15,6 +15,7 @@ import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import com.borealnetwork.facecheck.model.IdentityDocument
+import com.borealnetwork.facecheck.model.IneFrontValidationResult
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -132,6 +133,18 @@ internal class FaceCheckApi(
             if (grant != null) append("grant", grant)
             appendImage("ineFront", document.front, filename = "ineFront.jpg")
             appendImage("ineBack", document.back, filename = "ineBack.jpg")
+        }
+    }
+
+    override suspend fun validateIneFront(
+        subjectId: String,
+        front: ByteArray,
+    ): IneFrontValidationResult {
+        requireValidSubjectId(subjectId)
+        FaceCheckLogger.info { "operation=ine_validation request=started" }
+        return post(VALIDATE_INE_FRONT_PATH, FaceCheckLogOperation.INE_ATTACHMENT) {
+            append("subjectId", subjectId)
+            appendImage("ineFront", front, filename = "ineFront.jpg")
         }
     }
 
@@ -420,6 +433,7 @@ internal class FaceCheckApi(
         const val ENROLL_PATH = "enroll"
         const val VERIFY_PATH = "verify"
         const val ATTACH_INE_PATH = "attachIne"
+        const val VALIDATE_INE_FRONT_PATH = "validateIneFront"
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
         const val SDK_PLATFORM = "kmp"

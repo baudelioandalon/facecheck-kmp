@@ -103,6 +103,21 @@ class ImmersiveSampleFlowTest {
     }
 
     @Test
+    fun `local subject documents remember which subject already has INE`() {
+        assertEquals(
+            setOf("Person_01"),
+            LocalSubjectDocuments.remember(
+                existing = listOf("Person_01", "valor no válido"),
+                subjectId = " Person_01 ",
+            ),
+        )
+        assertEquals(
+            emptySet(),
+            LocalSubjectDocuments.forget(existing = listOf("Person_01"), subjectId = "Person_01"),
+        )
+    }
+
+    @Test
     fun `enrollment always asks left then right then front`() {
         assertEquals(
             listOf(Challenge.TurnLeft, Challenge.TurnRight, Challenge.Center),

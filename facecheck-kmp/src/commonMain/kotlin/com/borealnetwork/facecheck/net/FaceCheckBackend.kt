@@ -6,6 +6,7 @@ import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.IdentityDocument
+import com.borealnetwork.facecheck.model.IneFrontValidationResult
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -24,6 +25,11 @@ internal interface FaceCheckBackend {
         document: IdentityDocument,
         grant: String? = null,
     ): EnrollResult
+
+    suspend fun validateIneFront(
+        subjectId: String,
+        front: ByteArray,
+    ): IneFrontValidationResult
 
     suspend fun verify(
         subjectId: String,
