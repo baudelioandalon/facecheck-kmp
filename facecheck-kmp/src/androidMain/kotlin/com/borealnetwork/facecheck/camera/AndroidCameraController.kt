@@ -578,13 +578,19 @@ class AndroidCameraController(
     ): FaceFrame {
         val guide = previewFaceGuide
         if (faces.isEmpty()) {
-            return FrameGeometry.noFace(timestampMs).copy(insideGuide = guide == null)
+            return FrameGeometry.noFace(
+                timestampMs = timestampMs,
+                quality = LumaMetrics.measureFrame(proxy),
+            ).copy(insideGuide = guide == null)
         }
 
         // The largest face is the subject. With more than one in frame the
         // machine fails the session anyway, but it needs a real frame to do it.
         val face = faces.maxByOrNull { it.boundingBox.width().toLong() * it.boundingBox.height() }
-            ?: return FrameGeometry.noFace(timestampMs)
+            ?: return FrameGeometry.noFace(
+                timestampMs = timestampMs,
+                quality = LumaMetrics.measureFrame(proxy),
+            )
 
         val (uprightWidth, uprightHeight) = FrameGeometry.uprightSize(proxy, rotation)
         val faceInBuffer = FrameGeometry.uprightRectToBuffer(

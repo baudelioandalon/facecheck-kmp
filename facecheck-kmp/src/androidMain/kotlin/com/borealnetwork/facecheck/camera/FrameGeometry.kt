@@ -87,7 +87,10 @@ internal object FrameGeometry {
      * is indistinguishable from a stalled camera, and the machine's deadlines
      * are driven by the frames it receives.
      */
-    fun noFace(timestampMs: Long): FaceFrame = FaceFrame(
+    fun noFace(
+        timestampMs: Long,
+        quality: FrameQuality = FrameQuality(sharpness = 0f, brightness = 0f, detectorScore = 0f),
+    ): FaceFrame = FaceFrame(
         yaw = 0f,
         pitch = 0f,
         roll = 0f,
@@ -96,7 +99,7 @@ internal object FrameGeometry {
         faceRatio = 0f,
         trackingId = null,
         timestampMs = timestampMs,
-        quality = FrameQuality(sharpness = 0f, brightness = 0f, detectorScore = 0f),
+        quality = quality,
         faceCount = 0,
     )
 

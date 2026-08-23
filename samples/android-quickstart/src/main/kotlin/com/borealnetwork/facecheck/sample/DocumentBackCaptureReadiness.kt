@@ -60,7 +60,8 @@ internal class DocumentBackCaptureReadiness(
     }
 
     private fun FaceFrame.blockingInstruction(): String? = when {
-        faceCount > 0 -> "Ese parece el frente; gira la INE y muestra el reverso"
+        faceCount > 0 && faceRatio >= MIN_FRONT_FACE_RATIO ->
+            "Ese parece el frente; gira la INE y muestra el reverso"
         quality.sharpness < MIN_SHARPNESS -> "Acércala un poco o mejora la nitidez"
         quality.brightness < MIN_BRIGHTNESS -> "Busca más luz para leer el reverso"
         quality.brightness > MAX_BRIGHTNESS -> "Hay demasiada luz; evita los reflejos"
@@ -72,5 +73,6 @@ internal class DocumentBackCaptureReadiness(
         const val MIN_SHARPNESS = 45f
         const val MIN_BRIGHTNESS = 45f
         const val MAX_BRIGHTNESS = 235f
+        const val MIN_FRONT_FACE_RATIO = 0.10f
     }
 }

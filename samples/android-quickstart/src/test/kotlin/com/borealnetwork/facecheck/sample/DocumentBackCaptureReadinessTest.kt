@@ -30,10 +30,21 @@ class DocumentBackCaptureReadinessTest {
     }
 
     @Test
-    fun `back capture does not unlock when the front portrait is detected`() {
+    fun `back capture keeps small false face detections eligible for manual capture`() {
         val readiness = DocumentBackCaptureReadiness()
 
-        val state = readiness.onFrame(frame(timestampMs = 0L, faceCount = 1))
+        val state = readiness.onFrame(frame(timestampMs = 0L, faceCount = 1, faceRatio = 0.08f))
+
+        assertFalse(state.isReady)
+        assertTrue(state.hasCardSignal)
+        assertEquals("Mantén el reverso dentro del rectángulo 2…", state.instruction)
+    }
+
+    @Test
+    fun `back capture does not unlock when a front portrait is detected`() {
+        val readiness = DocumentBackCaptureReadiness()
+
+        val state = readiness.onFrame(frame(timestampMs = 0L, faceCount = 1, faceRatio = 0.18f))
 
         assertFalse(state.isReady)
         assertFalse(state.hasCardSignal)
@@ -45,13 +56,14 @@ class DocumentBackCaptureReadinessTest {
         sharpness: Float = 200f,
         brightness: Float = 120f,
         faceCount: Int = 0,
+        faceRatio: Float = 0f,
     ): FaceFrame = FaceFrame(
         yaw = 0f,
         pitch = 0f,
         roll = 0f,
         leftEyeOpen = null,
         rightEyeOpen = null,
-        faceRatio = 0f,
+        faceRatio = faceRatio,
         trackingId = null,
         timestampMs = timestampMs,
         quality = FrameQuality(

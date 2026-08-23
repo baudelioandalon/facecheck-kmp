@@ -78,6 +78,17 @@ internal object LumaMetrics {
     }
 
     /**
+     * Sample the full frame when no face is present.
+     *
+     * This is intentionally not used for liveness face quality, but document
+     * capture needs a non-face signal: the back of an INE has no portrait, so a
+     * zero-quality no-face frame would keep the "Tomar reverso" escape hatch
+     * disabled even when the card is centered and readable.
+     */
+    fun measureFrame(proxy: ImageProxy): FrameQuality =
+        measure(proxy, Rect(1, 1, proxy.width - 1, proxy.height - 1))
+
+    /**
      * What to report when the plane could not be read.
      *
      * Deliberately the *passing* values rather than zeros: an unreadable buffer
