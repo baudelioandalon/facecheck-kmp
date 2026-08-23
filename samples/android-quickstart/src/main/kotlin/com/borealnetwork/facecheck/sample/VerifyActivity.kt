@@ -1144,6 +1144,7 @@ class VerifyActivity : ComponentActivity() {
         var automaticUploadStarted = false
         var frontCaptureStarted = false
         var backCaptureStarted = false
+        var backUploadFailed = false
         var frontValidationInProgress = false
         val readiness = DocumentCaptureReadiness()
         val backReadiness = DocumentBackCaptureReadiness()
@@ -1185,6 +1186,7 @@ class VerifyActivity : ComponentActivity() {
                     if (it.isReady) "El frente de la INE ya está listo."
                     else "Alinea el documento y espera a que el frente se estabilice."
                 } ?: "Alinea el documento dentro del rectángulo."
+                !backReady && backUploadFailed -> "No se pudo guardar la INE. Ajusta el reverso y toca Tomar reverso para reintentar."
                 !backReady && backReadinessState?.hasCardSignal == true -> "Detectamos una tarjeta. Si no se toma sola, toca Tomar reverso."
                 !backReady -> "La foto del reverso se tomará automáticamente cuando esté legible dentro del rectángulo."
                 else -> "Enviando automáticamente…"
@@ -1345,6 +1347,7 @@ class VerifyActivity : ComponentActivity() {
         suspend fun captureBackAndUpload() {
             if (sessionId != activeCaptureId || backBytes != null || backCaptureStarted) return
             backCaptureStarted = true
+            backUploadFailed = false
             isUploading = true
             refreshUi()
             try {
@@ -1383,6 +1386,7 @@ class VerifyActivity : ComponentActivity() {
                     isUploading = false
                     automaticUploadStarted = false
                     backCaptureStarted = false
+                    backUploadFailed = true
                     currentScreen = screen.copy(
                         front = checkNotNull(frontBytes),
                         back = null,
@@ -1401,6 +1405,7 @@ class VerifyActivity : ComponentActivity() {
                     isUploading = false
                     automaticUploadStarted = false
                     backCaptureStarted = false
+                    backUploadFailed = true
                     val message = CaptureFailurePresentation.fromUnexpected(error)
                     currentScreen = screen.copy(
                         front = checkNotNull(frontBytes),
@@ -1418,6 +1423,7 @@ class VerifyActivity : ComponentActivity() {
         forceBackCaptureButton.setOnClickListener {
             if (!forceBackCaptureButton.isEnabled) return@setOnClickListener
             lifecycleScope.launch {
+                backUploadFailed = false
                 captureBackAndUpload()
             }
         }
@@ -1519,7 +1525,7 @@ class VerifyActivity : ComponentActivity() {
                         backBytes == null && automaticBackCaptureStarted && !isUploading -> {
                             backReadinessState = backReadiness.onFrame(frame)
                             refreshUi()
-                            if (backReadinessState.isReady && !backCaptureStarted) {
+                            if (backReadinessState.isReady && !backCaptureStarted && !backUploadFailed) {
                                 lifecycleScope.launch {
                                     captureBackAndUpload()
                                 }
