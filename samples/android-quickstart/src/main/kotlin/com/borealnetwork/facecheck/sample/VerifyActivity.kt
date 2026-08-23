@@ -382,7 +382,8 @@ class VerifyActivity : ComponentActivity() {
                 column.addView(
                     verificationSubjectCard(
                         subject = subject,
-                        hasIne = subject.subjectId in subjectsWithIne,
+                        hasIne = subjectsWithIne.containsKey(subject.subjectId),
+                        ineSavedAtMs = subjectsWithIne[subject.subjectId],
                         index = index,
                     ),
                     fullWidth(),
@@ -397,6 +398,7 @@ class VerifyActivity : ComponentActivity() {
     private fun verificationSubjectCard(
         subject: SubjectEnrollmentRecord,
         hasIne: Boolean,
+        ineSavedAtMs: Long?,
         index: Int,
     ): View {
         val accent = if (hasIne) Color.rgb(23, 142, 92) else Color.rgb(74, 101, 133)
@@ -432,6 +434,12 @@ class VerifyActivity : ComponentActivity() {
             text = enrollmentDateLabel(subject.enrolledAtMs)
             textSize = 13f
             setPadding(0, 8, 0, 0)
+            setTextColor(Color.rgb(100, 116, 139))
+        }, fullWidth())
+        identity.addView(TextView(this).apply {
+            text = if (hasIne) ineSavedDateLabel(ineSavedAtMs) else "INE no cargada"
+            textSize = 13f
+            setPadding(0, 4, 0, 0)
             setTextColor(Color.rgb(100, 116, 139))
         }, fullWidth())
         header.addView(
@@ -500,6 +508,17 @@ class VerifyActivity : ComponentActivity() {
         val formatter = SimpleDateFormat("dd MMM yyyy · HH:mm", Locale.forLanguageTag("es-MX"))
         return "Enrolado ${formatter.format(Date(enrolledAtMs))}"
     }
+
+    private fun ineSavedDateLabel(ineSavedAtMs: Long?): String {
+        if (ineSavedAtMs == null) return "INE guardada: fecha no disponible"
+        val formatter = SimpleDateFormat("dd MMM yyyy · HH:mm", Locale.forLanguageTag("es-MX"))
+        return "INE guardada ${formatter.format(Date(ineSavedAtMs))}"
+    }
+
+    private fun savedAtMillis(value: String?): Long =
+        value
+            ?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() }
+            ?: Clock.System.now().toEpochMilliseconds()
 
     private fun renderCapture(
         screen: ImmersiveScreen.Capture,
@@ -1368,7 +1387,7 @@ class VerifyActivity : ComponentActivity() {
                     message = "Reverso capturado. Enviando INE.",
                 )
                 refreshUi()
-                FaceCheck.attachIdentityDocument(
+                val result = FaceCheck.attachIdentityDocument(
                     subjectId = screen.subjectId,
                     document = IdentityDocument(
                         front = checkNotNull(frontBytes),
@@ -1376,9 +1395,12 @@ class VerifyActivity : ComponentActivity() {
                     ),
                     location = location,
                 )
-                rememberSubjectIne(screen.subjectId)
                 if (sessionId == activeCaptureId) {
-                    renderDocumentComplete(frame, subjectId = screen.subjectId)
+                    renderDocumentComplete(
+                        frame,
+                        subjectId = screen.subjectId,
+                        ineSavedAtMs = savedAtMillis(result.ineSavedAt),
+                    )
                 }
             } catch (error: FaceCheckException) {
                 if (sessionId == activeCaptureId) {
@@ -1543,8 +1565,8 @@ class VerifyActivity : ComponentActivity() {
         }
     }
 
-    private fun renderDocumentComplete(frame: FrameLayout, subjectId: String) {
-        rememberSubjectIne(subjectId)
+    private fun renderDocumentComplete(frame: FrameLayout, subjectId: String, ineSavedAtMs: Long) {
+        rememberSubjectIne(subjectId, ineSavedAtMs)
         currentScreen = ImmersiveScreen.Outcome(
             operation = SampleOperation.ENROLL,
             succeeded = true,
@@ -1678,17 +1700,17 @@ class VerifyActivity : ComponentActivity() {
 
     private fun forgetSubject(subjectId: String) {
         val updatedSubjects = knownSubjects().filterNot { it == subjectId }
-        val updatedDocuments = LocalSubjectDocuments.forget(knownSubjectsWithIne().toList(), subjectId)
+        val updatedDocuments = LocalSubjectDocuments.forget(knownSubjectsWithIne(), subjectId)
         val updatedMetadata = LocalSubjectEnrollmentMetadata.forget(knownSubjectRecords(), subjectId)
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(SUBJECTS_KEY, updatedSubjects.joinToString("\n"))
-            .putString(SUBJECTS_WITH_INE_KEY, updatedDocuments.joinToString("\n"))
+            .putString(SUBJECTS_WITH_INE_KEY, LocalSubjectDocuments.serialize(updatedDocuments))
             .putString(SUBJECT_METADATA_KEY, LocalSubjectEnrollmentMetadata.serialize(updatedMetadata))
             .apply()
     }
 
-    private fun knownSubjectsWithIne(): Set<String> {
+    private fun knownSubjectsWithIne(): Map<String, Long?> {
         val preferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         return LocalSubjectDocuments.readAndMigrate(
             readStoredSubjects = { preferences.getString(SUBJECTS_WITH_INE_KEY, "").orEmpty() },
@@ -1698,8 +1720,8 @@ class VerifyActivity : ComponentActivity() {
         )
     }
 
-    private fun rememberSubjectIne(subjectId: String) {
-        val remembered = LocalSubjectDocuments.remember(knownSubjectsWithIne().toList(), subjectId)
+    private fun rememberSubjectIne(subjectId: String, ineSavedAtMs: Long) {
+        val remembered = LocalSubjectDocuments.remember(knownSubjectsWithIne(), subjectId, ineSavedAtMs)
         val rememberedSubjects = LocalSubjectDirectory.remember(knownSubjects(), subjectId)
         val metadata = LocalSubjectEnrollmentMetadata.read(
             storedMetadata = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -1710,16 +1732,16 @@ class VerifyActivity : ComponentActivity() {
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(SUBJECTS_KEY, rememberedSubjects.joinToString("\n"))
-            .putString(SUBJECTS_WITH_INE_KEY, remembered.joinToString("\n"))
+            .putString(SUBJECTS_WITH_INE_KEY, LocalSubjectDocuments.serialize(remembered))
             .putString(SUBJECT_METADATA_KEY, LocalSubjectEnrollmentMetadata.serialize(metadata))
             .apply()
     }
 
     private fun forgetSubjectIne(subjectId: String) {
-        val remembered = LocalSubjectDocuments.forget(knownSubjectsWithIne().toList(), subjectId)
+        val remembered = LocalSubjectDocuments.forget(knownSubjectsWithIne(), subjectId)
         getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
-            .putString(SUBJECTS_WITH_INE_KEY, remembered.joinToString("\n"))
+            .putString(SUBJECTS_WITH_INE_KEY, LocalSubjectDocuments.serialize(remembered))
             .apply()
     }
 

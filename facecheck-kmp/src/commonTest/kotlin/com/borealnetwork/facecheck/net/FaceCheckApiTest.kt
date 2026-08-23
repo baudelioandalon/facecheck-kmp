@@ -388,7 +388,9 @@ class FaceCheckApiTest {
         var body = ""
         val api = api {
             body = it.body.readAsText()
-            respondJson("""{"enrolled":true,"subjectId":"test_9f86d081","ineEnrolled":true,"mode":"test"}""")
+            respondJson(
+                """{"enrolled":true,"subjectId":"test_9f86d081","ineEnrolled":true,"ineSavedAt":"2026-08-23T17:58:00Z","mode":"test"}""",
+            )
         }
 
         val result = api.attachIdentityDocument(
@@ -398,6 +400,7 @@ class FaceCheckApiTest {
         )
 
         assertTrue(result.ineEnrolled)
+        assertEquals("2026-08-23T17:58:00Z", result.ineSavedAt)
         assertContains(body, "subjectId")
         assertContains(body, "person_demo_01")
         assertContains(body, "locationContext")

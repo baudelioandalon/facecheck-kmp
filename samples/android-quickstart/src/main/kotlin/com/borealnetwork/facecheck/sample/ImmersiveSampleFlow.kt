@@ -111,29 +111,70 @@ internal object LocalSubjectDirectory {
 }
 
 internal object LocalSubjectDocuments {
+    private const val SEPARATOR = "|"
+
     fun readAndMigrate(
         readStoredSubjects: () -> String,
         persistSubjects: (String) -> Unit,
-    ): Set<String> {
+    ): Map<String, Long?> {
         val storedSubjects = readStoredSubjects()
-        val normalizedSubjects = normalizedDistinct(storedSubjects.lineSequence().toList())
-        val persistedSubjects = normalizedSubjects.joinToString("\n")
+        val records = storedSubjects
+            .lineSequence()
+            .mapNotNull(::parseLine)
+            .toList()
+        val normalizedSubjects = normalizedDistinct(records).associate { it.subjectId to it.ineSavedAtMs }
+        val persistedSubjects = serialize(normalizedSubjects)
         if (storedSubjects != persistedSubjects) persistSubjects(persistedSubjects)
-        return normalizedSubjects.toSet()
+        return normalizedSubjects
     }
 
-    fun remember(existing: List<String>, subjectId: String): Set<String> =
-        normalizedDistinct(listOf(subjectId) + existing).toSet()
-
-    fun forget(existing: List<String>, subjectId: String): Set<String> {
-        val normalized = subjectId.normalizedSubjectId() ?: return normalizedDistinct(existing).toSet()
-        return normalizedDistinct(existing).filterNot { it == normalized }.toSet()
+    fun remember(existing: Map<String, Long?>, subjectId: String, ineSavedAtMs: Long): Map<String, Long?> {
+        val normalized = subjectId.normalizedSubjectId() ?: return existing.normalized()
+        return existing.normalized() + mapOf(normalized to ineSavedAtMs)
     }
 
-    private fun normalizedDistinct(values: List<String>): List<String> = values
-        .mapNotNull { it.normalizedSubjectId() }
-        .distinct()
+    fun forget(existing: Map<String, Long?>, subjectId: String): Map<String, Long?> {
+        val normalized = subjectId.normalizedSubjectId() ?: return existing.normalized()
+        return existing.normalized().filterKeys { it != normalized }
+    }
+
+    fun serialize(records: Map<String, Long?>): String =
+        records.normalized()
+            .map { (subjectId, ineSavedAtMs) -> "${subjectId}$SEPARATOR${ineSavedAtMs ?: ""}" }
+            .joinToString("\n")
+
+    private fun parseLine(line: String): SubjectDocumentRecord? {
+        val parts = line.split(SEPARATOR, limit = 2)
+        val subjectId = parts.getOrNull(0)?.normalizedSubjectId() ?: return null
+        val ineSavedAtMs = parts.getOrNull(1)
+            ?.takeIf { it.isNotBlank() }
+            ?.toLongOrNull()
+        if (parts.size > 1 && parts[1].isNotBlank() && ineSavedAtMs == null) return null
+        return SubjectDocumentRecord(subjectId, ineSavedAtMs)
+    }
+
+    private fun normalizedDistinct(values: List<SubjectDocumentRecord>): List<SubjectDocumentRecord> {
+        val bySubject = LinkedHashMap<String, SubjectDocumentRecord>()
+        values.forEach { record ->
+            bySubject.putIfAbsent(record.subjectId, record)
+        }
+        return bySubject.values.toList()
+    }
+
+    private fun Map<String, Long?>.normalized(): Map<String, Long?> {
+        val bySubject = LinkedHashMap<String, Long?>()
+        forEach { (subjectId, ineSavedAtMs) ->
+            val normalized = subjectId.normalizedSubjectId() ?: return@forEach
+            bySubject.putIfAbsent(normalized, ineSavedAtMs)
+        }
+        return bySubject
+    }
 
     private fun String.normalizedSubjectId(): String? = trim()
         .takeIf(sampleSubjectIdPattern::matches)
 }
+
+private data class SubjectDocumentRecord(
+    val subjectId: String,
+    val ineSavedAtMs: Long?,
+)

@@ -21,6 +21,8 @@ data class EnrollResult(
     val overwritten: Boolean = false,
     val faceQuality: FaceQuality? = null,
     val ineEnrolled: Boolean = false,
+    /** ISO-8601 timestamp when an identity document was saved for this subject, when applicable. */
+    val ineSavedAt: String? = null,
     val ineQuality: FaceQuality? = null,
     /**
      * Explicit document lifecycle state for the enrolled subject.
