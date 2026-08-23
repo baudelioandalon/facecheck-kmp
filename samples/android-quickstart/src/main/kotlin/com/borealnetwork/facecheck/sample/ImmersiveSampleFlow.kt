@@ -1,5 +1,6 @@
 package com.borealnetwork.facecheck.sample
 
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.ModelProfileSummary
 
 private val sampleSubjectIdPattern = Regex("^[A-Za-z][A-Za-z0-9_-]{7,127}$")
@@ -18,6 +19,7 @@ internal sealed interface ImmersiveScreen {
         val operation: SampleOperation,
         val validationMessage: String? = null,
         val subjectId: String = "",
+        val documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
     ) : ImmersiveScreen
 
     data object VerificationDirectory : ImmersiveScreen
@@ -26,13 +28,23 @@ internal sealed interface ImmersiveScreen {
     data class CameraPreflight(
         val operation: SampleOperation,
         val subjectId: String,
+        val documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         val enrollmentProfile: ModelProfileSummary? = null,
     ) : ImmersiveScreen
 
     data class Capture(
         val operation: SampleOperation,
         val subjectId: String,
+        val documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         val enrollmentProfile: ModelProfileSummary? = null,
+    ) : ImmersiveScreen
+
+    data class DocumentCapture(
+        val subjectId: String,
+        val front: ByteArray? = null,
+        val back: ByteArray? = null,
+        val message: String? = null,
+        val isUploading: Boolean = false,
     ) : ImmersiveScreen
 
     data class Outcome(
@@ -47,21 +59,28 @@ internal object ImmersiveSampleFlow {
         operation: SampleOperation,
         subjectId: String,
         blockingMessage: String?,
+        documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         enrollmentProfile: ModelProfileSummary? = null,
     ): ImmersiveScreen =
         blockingMessage?.let(ImmersiveScreen::PermissionGate)
-            ?: begin(operation, subjectId, enrollmentProfile)
+            ?: begin(operation, subjectId, documentPolicy, enrollmentProfile)
 
     fun begin(
         operation: SampleOperation,
         subjectId: String,
+        documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         enrollmentProfile: ModelProfileSummary? = null,
     ): ImmersiveScreen {
         val normalized = subjectId.trim()
         return if (sampleSubjectIdPattern.matches(normalized)) {
-            ImmersiveScreen.CameraPreflight(operation, normalized, enrollmentProfile)
+            ImmersiveScreen.CameraPreflight(operation, normalized, documentPolicy, enrollmentProfile)
         } else {
-            ImmersiveScreen.SubjectSetup(operation, "Escribe un ID de persona válido.", normalized)
+            ImmersiveScreen.SubjectSetup(
+                operation = operation,
+                validationMessage = "Escribe un ID de persona válido.",
+                subjectId = normalized,
+                documentPolicy = documentPolicy,
+            )
         }
     }
 }

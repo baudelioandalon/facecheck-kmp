@@ -10,9 +10,11 @@ import com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor
 import com.borealnetwork.facecheck.liveness.LivenessSessionWire
 import com.borealnetwork.facecheck.liveness.ServerChallenge
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -118,6 +120,21 @@ internal class FaceCheckApi(
         }
     }
 
+    override suspend fun attachIdentityDocument(
+        subjectId: String,
+        document: IdentityDocument,
+        grant: String?,
+    ): EnrollResult {
+        requireValidSubjectId(subjectId)
+        FaceCheckLogger.info { "operation=ine_attachment request=started" }
+        return post(ATTACH_INE_PATH, FaceCheckLogOperation.INE_ATTACHMENT) {
+            append("subjectId", subjectId)
+            if (grant != null) append("grant", grant)
+            appendImage("ineFront", document.front, filename = "ineFront.jpg")
+            appendImage("ineBack", document.back, filename = "ineBack.jpg")
+        }
+    }
+
     /**
      * `POST /verify`.
      *
@@ -145,6 +162,7 @@ internal class FaceCheckApi(
         operation: String,
         subjectId: String,
         requestedModelProfileId: String?,
+        requestedDocumentPolicy: DocumentCapturePolicy,
         location: LocationContext,
     ): LivenessSessionDescriptor {
         requireValidSubjectId(subjectId)
@@ -163,6 +181,7 @@ internal class FaceCheckApi(
             sdk = SdkDescriptor(platform = SDK_PLATFORM, version = SDK_VERSION),
             locationContext = location,
             requestedModelProfileId = requestedModelProfileId?.takeIf { it.isNotBlank() },
+            requestedDocumentPolicy = requestedDocumentPolicy,
         )
         val wire = postJsonWithoutRetry<LivenessSessionWire>(
             path = LIVENESS_SESSIONS_PATH,
@@ -184,6 +203,7 @@ internal class FaceCheckApi(
             protocolVersion = wire.protocolVersion,
             challengePlan = challenges,
             capturePolicy = wire.capturePolicy,
+            documentCapturePolicy = wire.documentCapturePolicy,
         )
     }
 
@@ -399,6 +419,7 @@ internal class FaceCheckApi(
         const val API_KEY_HEADER = "X-Api-Key"
         const val ENROLL_PATH = "enroll"
         const val VERIFY_PATH = "verify"
+        const val ATTACH_INE_PATH = "attachIne"
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
         const val SDK_PLATFORM = "kmp"
@@ -422,6 +443,7 @@ private data class LivenessSessionRequest(
     val sdk: SdkDescriptor,
     val locationContext: LocationContext,
     val requestedModelProfileId: String? = null,
+    val requestedDocumentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
 )
 
 @Serializable

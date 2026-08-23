@@ -3,6 +3,7 @@ package com.borealnetwork.facecheck.liveness
 import com.borealnetwork.facecheck.FaceCheckConfig
 import com.borealnetwork.facecheck.camera.CameraController
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
@@ -44,6 +45,7 @@ internal data class LivenessSessionWire(
     val protocolVersion: String,
     val challengePlan: List<String>,
     val capturePolicy: CapturePolicy = CapturePolicy(),
+    val documentCapturePolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
 )
 
 data class LivenessSessionDescriptor(
@@ -55,6 +57,7 @@ data class LivenessSessionDescriptor(
     val protocolVersion: String,
     val challengePlan: List<ServerChallenge>,
     val capturePolicy: CapturePolicy = CapturePolicy(),
+    val documentCapturePolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
 ) {
     val modelProfileId: String get() = modelProfile.id
 }
@@ -91,6 +94,7 @@ abstract class PreparedLivenessSession internal constructor(
     val modelProfile: SessionModelProfile get() = descriptor.modelProfile
     val challengePlan: List<ServerChallenge> get() = descriptor.challengePlan
     val capturePolicy: CapturePolicy get() = descriptor.capturePolicy
+    val documentCapturePolicy: DocumentCapturePolicy get() = descriptor.documentCapturePolicy
 
     protected suspend fun capture(camera: CameraController): CapturedEvidenceBundle {
         if (consumed) {

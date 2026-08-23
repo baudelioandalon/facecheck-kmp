@@ -1,6 +1,7 @@
 package com.borealnetwork.facecheck.sample
 
 import com.borealnetwork.facecheck.liveness.Challenge
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -26,6 +27,22 @@ class ImmersiveSampleFlowTest {
         assertEquals(
             ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, "Person_01"),
             ImmersiveSampleFlow.begin(SampleOperation.VERIFY, " Person_01 "),
+        )
+    }
+
+    @Test
+    fun `the selected document policy survives the preflight handoff`() {
+        assertEquals(
+            ImmersiveScreen.CameraPreflight(
+                operation = SampleOperation.ENROLL,
+                subjectId = "Person_01",
+                documentPolicy = DocumentCapturePolicy.FACE_PLUS_INE,
+            ),
+            ImmersiveSampleFlow.begin(
+                operation = SampleOperation.ENROLL,
+                subjectId = "Person_01",
+                documentPolicy = DocumentCapturePolicy.FACE_PLUS_INE,
+            ),
         )
     }
 

@@ -31,7 +31,9 @@ import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.camera.AndroidCameraController
 import com.borealnetwork.facecheck.camera.CameraHost
 import com.borealnetwork.facecheck.liveness.ActiveLivenessState
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.ModelProfileSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -109,9 +111,11 @@ class VerifyActivity : ComponentActivity() {
                 operation = screen.operation,
                 validationMessage = screen.validationMessage,
                 subjectId = screen.subjectId,
+                documentPolicy = screen.documentPolicy,
             )
             ImmersiveScreen.VerificationDirectory -> renderVerificationDirectory()
             is ImmersiveScreen.CameraPreflight -> Unit
+            is ImmersiveScreen.DocumentCapture -> renderDocumentCapture(screen)
             is ImmersiveScreen.Outcome -> renderOutcome(screen)
             is ImmersiveScreen.Capture -> Unit
         }
@@ -181,12 +185,19 @@ class VerifyActivity : ComponentActivity() {
         operation: SampleOperation,
         validationMessage: String? = null,
         subjectId: String = "",
+        documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
     ) {
-        currentScreen = ImmersiveScreen.SubjectSetup(operation, validationMessage, subjectId)
+        currentScreen = ImmersiveScreen.SubjectSetup(operation, validationMessage, subjectId, documentPolicy)
         val column = screenColumn()
-        column.addView(title("Enrolar una persona"))
+        column.addView(title(if (operation == SampleOperation.ENROLL) "Enrolar una persona" else "Verificar una identidad"))
         column.addView(
-            body("Escribe el ID de persona que identificará este rostro. La captura empieza en el siguiente paso."),
+            body(
+                if (operation == SampleOperation.ENROLL) {
+                    "Escribe el ID de persona que identificará este rostro. La captura empieza en el siguiente paso."
+                } else {
+                    "Escribe o elige un ID enrolado por este sample. La captura empieza en el siguiente paso."
+                },
+            ),
         )
         validationMessage?.let {
             addSpace(column, 12)
@@ -201,6 +212,7 @@ class VerifyActivity : ComponentActivity() {
         }
         column.addView(subjectIdInput, fullWidth())
 
+        var selectedPolicy = documentPolicy
         var selectedProfile: ModelProfileSummary? = null
         val profileStatus = TextView(this).apply {
             textSize = 15f
@@ -215,6 +227,37 @@ class VerifyActivity : ComponentActivity() {
         if (operation == SampleOperation.ENROLL) {
             column.addView(sectionTitle("Modelo de backend"))
             column.addView(profileStatus)
+            addSpace(column, 18)
+            column.addView(sectionTitle("Política documental"))
+            column.addView(body("Puedes dejarla en solo rostro o pedir rostro + INE para adjuntar el documento después."))
+            addSpace(column, 10)
+            column.addView(
+                policyButton(
+                    label = "Solo rostro",
+                    selected = selectedPolicy == DocumentCapturePolicy.FACE_ONLY,
+                ) {
+                    renderSubjectSetup(
+                        operation = operation,
+                        validationMessage = validationMessage,
+                        subjectId = subjectIdInput.text.toString(),
+                        documentPolicy = DocumentCapturePolicy.FACE_ONLY,
+                    )
+                },
+            )
+            addSpace(column, 8)
+            column.addView(
+                policyButton(
+                    label = "Rostro + INE",
+                    selected = selectedPolicy == DocumentCapturePolicy.FACE_PLUS_INE,
+                ) {
+                    renderSubjectSetup(
+                        operation = operation,
+                        validationMessage = validationMessage,
+                        subjectId = subjectIdInput.text.toString(),
+                        documentPolicy = DocumentCapturePolicy.FACE_PLUS_INE,
+                    )
+                },
+            )
         }
 
         addSpace(column, 24)
@@ -230,6 +273,7 @@ class VerifyActivity : ComponentActivity() {
                 operation = operation,
                 subjectId = subjectIdInput.text.toString(),
                 blockingMessage = blockingMessage(),
+                documentPolicy = selectedPolicy,
             )) {
                 is ImmersiveScreen.PermissionGate -> renderPermissionGate(next.message)
                 is ImmersiveScreen.CameraPreflight -> {
@@ -241,6 +285,7 @@ class VerifyActivity : ComponentActivity() {
                     operation = operation,
                     validationMessage = next.validationMessage,
                     subjectId = next.subjectId,
+                    documentPolicy = next.documentPolicy,
                 )
                 else -> Unit
             }
@@ -305,6 +350,10 @@ class VerifyActivity : ComponentActivity() {
                     renderCameraPreflight(
                         ImmersiveScreen.CameraPreflight(SampleOperation.VERIFY, subjectId),
                     )
+                })
+                addSpace(column, 6)
+                column.addView(secondaryButton("Agregar INE a $subjectId") {
+                    renderDocumentCapture(subjectId)
                 })
             }
         }
@@ -417,6 +466,7 @@ class VerifyActivity : ComponentActivity() {
                         val session = FaceCheck.prepareEnrollment(
                             subjectId = screen.subjectId,
                             modelProfileId = profile.id,
+                            documentPolicy = screen.documentPolicy,
                             location = location,
                         )
                         timerJob = startSessionCountdown(session.expiresAt, timer, sessionId)
@@ -578,6 +628,7 @@ class VerifyActivity : ComponentActivity() {
                 ImmersiveScreen.Capture(
                     operation = screen.operation,
                     subjectId = screen.subjectId,
+                    documentPolicy = screen.documentPolicy,
                     enrollmentProfile = screen.enrollmentProfile,
                 ),
             )
@@ -843,6 +894,8 @@ class VerifyActivity : ComponentActivity() {
         addSpace(dialog, 32)
         dialog.addView(primaryButton("Verificar esta identidad") { renderVerificationDirectory() })
         addSpace(dialog, 12)
+        dialog.addView(secondaryButton("Agregar INE ahora") { renderDocumentCapture(subjectId) })
+        addSpace(dialog, 12)
         dialog.addView(secondaryButton("Volver al inicio") { renderHome() })
         frame.addView(
             dialog,
@@ -855,6 +908,236 @@ class VerifyActivity : ComponentActivity() {
                 marginEnd = 40
             },
         )
+    }
+
+    private fun renderDocumentCapture(screen: ImmersiveScreen.DocumentCapture) {
+        blockingMessage()?.let {
+            renderPermissionGate(it)
+            return
+        }
+        currentScreen = screen
+        busy = true
+        val sessionId = ++activeCaptureId
+        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val preview = PreviewView(this)
+        frame.addView(preview, matchParent())
+
+        frame.addView(
+            environmentBadge(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START,
+            ).apply {
+                topMargin = 44
+                marginStart = 28
+            },
+        )
+
+        val cancelButton = secondaryButton("Cancelar") { cancelCapture(sessionId) }
+        frame.addView(
+            cancelButton,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+                topMargin = 36
+                marginEnd = 28
+            },
+        )
+
+        val guidance = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 56)
+            setBackgroundColor(Color.argb(224, 4, 12, 23))
+        }
+        val step = TextView(this).apply {
+            textSize = 14f
+            setTextColor(Color.rgb(155, 237, 203))
+        }
+        val instruction = TextView(this).apply {
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            setPadding(0, 8, 0, 0)
+        }
+        val status = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.argb(210, 255, 255, 255))
+            setPadding(0, 8, 0, 0)
+        }
+        val actionButton = primaryButton("Capturar frente") {}
+        guidance.addView(step)
+        guidance.addView(instruction)
+        guidance.addView(status)
+        guidance.addView(actionButton, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 24 })
+        guidance.addView(
+            secondaryButton("Volver al inicio") {
+                activeCaptureId += 1
+                releaseCamera()
+                renderHome()
+            },
+            LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 },
+        )
+        frame.addView(guidance, FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        install(frame)
+
+        val controller = AndroidCameraController(host = CameraHost(this))
+        controller.attachPreview(preview)
+        camera = controller
+        controller.start()
+
+        var frontBytes = screen.front
+        var backBytes = screen.back
+        var isUploading = screen.isUploading
+
+        fun refreshUi() {
+            step.text = when {
+                frontBytes == null -> "Paso 1 de 2"
+                backBytes == null -> "Paso 2 de 2"
+                else -> "Listo para guardar"
+            }
+            instruction.text = when {
+                frontBytes == null -> "Captura el frente de la INE"
+                backBytes == null -> "Captura el reverso de la INE"
+                else -> "Guarda la INE para vincularla al rostro"
+            }
+            status.text = when {
+                isUploading -> "Guardando INE…"
+                frontBytes == null -> "Alinea la credencial y toma la primera foto."
+                backBytes == null -> "Ahora toma la segunda foto, del reverso."
+                else -> "Ya tenemos las dos fotos y podemos enviarlas."
+            }
+            actionButton.text = when {
+                frontBytes == null -> "Capturar frente"
+                backBytes == null -> "Capturar reverso"
+                else -> "Guardar INE"
+            }
+            actionButton.isEnabled = !isUploading
+            cancelButton.visibility = if (isUploading) View.INVISIBLE else View.VISIBLE
+        }
+
+        refreshUi()
+
+        actionButton.setOnClickListener {
+            if (sessionId != activeCaptureId || isUploading) return@setOnClickListener
+            lifecycleScope.launch {
+                try {
+                    when {
+                        frontBytes == null -> {
+                            isUploading = true
+                            refreshUi()
+                            val front = controller.captureStill()
+                            frontBytes = front.bytes
+                            currentScreen = screen.copy(front = frontBytes, message = "Frente capturada. Ahora captura el reverso.")
+                            isUploading = false
+                            refreshUi()
+                        }
+                        backBytes == null -> {
+                            isUploading = true
+                            refreshUi()
+                            val back = controller.captureStill()
+                            backBytes = back.bytes
+                            currentScreen = screen.copy(
+                                front = frontBytes,
+                                back = backBytes,
+                                message = "Reverso capturado. Ya puedes guardar la INE.",
+                            )
+                            isUploading = false
+                            refreshUi()
+                        }
+                        else -> {
+                            isUploading = true
+                            refreshUi()
+                            FaceCheck.attachIdentityDocument(
+                                subjectId = screen.subjectId,
+                                document = IdentityDocument(
+                                    front = checkNotNull(frontBytes),
+                                    back = checkNotNull(backBytes),
+                                ),
+                            )
+                            if (sessionId == activeCaptureId) {
+                                renderDocumentComplete(frame, subjectId = screen.subjectId)
+                            }
+                        }
+                    }
+                } catch (error: FaceCheckException) {
+                    if (sessionId == activeCaptureId) {
+                        currentScreen = screen.copy(
+                            front = frontBytes,
+                            back = backBytes,
+                            message = "${error.code}: ${error.message}",
+                            isUploading = false,
+                        )
+                        isUploading = false
+                        refreshUi()
+                        status.setTextColor(Color.rgb(255, 188, 184))
+                        status.text = "${error.code}: ${error.message}"
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    if (sessionId == activeCaptureId) {
+                        currentScreen = screen.copy(
+                            front = frontBytes,
+                            back = backBytes,
+                            message = CaptureFailurePresentation.fromUnexpected(error),
+                            isUploading = false,
+                        )
+                        isUploading = false
+                        refreshUi()
+                        status.setTextColor(Color.rgb(255, 188, 184))
+                        status.text = CaptureFailurePresentation.fromUnexpected(error)
+                    }
+                } finally {
+                    if (sessionId == activeCaptureId) {
+                        busy = false
+                    }
+                }
+            }
+        }
+    }
+
+    private fun renderDocumentComplete(frame: FrameLayout, subjectId: String) {
+        currentScreen = ImmersiveScreen.Outcome(
+            operation = SampleOperation.ENROLL,
+            succeeded = true,
+            message = "La INE quedó adjunta al sujeto $subjectId.",
+        )
+        releaseCamera()
+        frame.addView(View(this).apply {
+            setBackgroundColor(Color.argb(176, 3, 10, 19))
+        }, matchParent())
+        val dialog = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(48, 48, 48, 48)
+            setBackgroundColor(Color.rgb(249, 250, 252))
+        }
+        dialog.addView(TextView(this).apply {
+            text = "✓"
+            textSize = 80f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(24, 142, 92))
+        }, fullWidth())
+        addSpace(dialog, 12)
+        dialog.addView(title("INE capturada"), fullWidth())
+        dialog.addView(body("El documento quedó listo y asociado al ID $subjectId."))
+        addSpace(dialog, 32)
+        dialog.addView(primaryButton("Verificar esta identidad") { renderVerificationDirectory() })
+        addSpace(dialog, 12)
+        dialog.addView(secondaryButton("Volver al inicio") { renderHome() })
+        frame.addView(
+            dialog,
+            FrameLayout.LayoutParams(
+                MATCH,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            ).apply {
+                marginStart = 40
+                marginEnd = 40
+            },
+        )
+    }
+
+    private fun renderDocumentCapture(subjectId: String) {
+        renderDocumentCapture(ImmersiveScreen.DocumentCapture(subjectId))
     }
 
     private fun renderOutcome(screen: ImmersiveScreen.Outcome) {
@@ -1064,6 +1347,11 @@ class VerifyActivity : ComponentActivity() {
         text = label
         setOnClickListener { action() }
     }
+
+    private fun policyButton(label: String, selected: Boolean, action: () -> Unit): Button =
+        (if (selected) primaryButton(label, action) else secondaryButton(label, action)).apply {
+            text = if (selected) "✓ $label" else label
+        }
 
     private fun addSpace(parent: LinearLayout, height: Int) {
         parent.addView(Space(this), LinearLayout.LayoutParams(1, height))

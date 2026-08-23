@@ -7,9 +7,11 @@ import com.borealnetwork.facecheck.liveness.EnrollmentSession
 import com.borealnetwork.facecheck.liveness.VerificationSession
 import com.borealnetwork.facecheck.liveness.runLivenessSession
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -130,6 +132,7 @@ object FaceCheck {
     suspend fun prepareEnrollment(
         subjectId: String,
         modelProfileId: String,
+        documentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         location: LocationContext,
     ): EnrollmentSession {
         val config = requireConfig()
@@ -137,6 +140,7 @@ object FaceCheck {
             operation = "enroll",
             subjectId = subjectId,
             requestedModelProfileId = modelProfileId,
+            requestedDocumentPolicy = documentPolicy,
             location = location,
         )
         return EnrollmentSession(descriptor, requireApi(), config)
@@ -151,6 +155,7 @@ object FaceCheck {
             operation = "verify",
             subjectId = subjectId,
             requestedModelProfileId = null,
+            requestedDocumentPolicy = DocumentCapturePolicy.FACE_ONLY,
             location = location,
         )
         return VerificationSession(descriptor, requireApi(), config)
@@ -221,6 +226,16 @@ object FaceCheck {
             compareWith = compareWith,
         )
     }
+
+    suspend fun attachIdentityDocument(
+        subjectId: String,
+        document: IdentityDocument,
+        grant: String? = null,
+    ): EnrollResult = requireApi().attachIdentityDocument(
+        subjectId = subjectId,
+        document = document,
+        grant = grant,
+    )
 
     private fun requireConfig(): FaceCheckConfig = activeConfig
         ?: throw FaceCheckException(FaceCheckErrorCode.NOT_INITIALIZED)

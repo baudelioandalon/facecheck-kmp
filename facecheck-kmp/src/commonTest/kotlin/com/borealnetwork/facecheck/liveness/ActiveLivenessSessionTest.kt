@@ -4,9 +4,11 @@ import com.borealnetwork.facecheck.FaceCheck
 import com.borealnetwork.facecheck.FaceCheckConfig
 import com.borealnetwork.facecheck.camera.CameraController
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.ModelProfileSummary
@@ -41,6 +43,7 @@ private class FakeSessionBackend(
     var requestedOperation: String? = null
     var requestedSubjectId: String? = null
     var requestedModelProfileId: String? = null
+    var requestedDocumentPolicy: DocumentCapturePolicy? = null
     var requestedLocation: LocationContext? = null
     var enrollCalls = 0
     var verifyCalls = 0
@@ -79,11 +82,13 @@ private class FakeSessionBackend(
         operation: String,
         subjectId: String,
         requestedModelProfileId: String?,
+        requestedDocumentPolicy: DocumentCapturePolicy,
         location: LocationContext,
     ): LivenessSessionDescriptor {
         requestedOperation = operation
         requestedSubjectId = subjectId
         this.requestedModelProfileId = requestedModelProfileId
+        this.requestedDocumentPolicy = requestedDocumentPolicy
         requestedLocation = location
         return LivenessSessionDescriptor(
             sessionId = "ls_abcdefghijklmnopqrst",
@@ -97,6 +102,7 @@ private class FakeSessionBackend(
             ),
             protocolVersion = "active-liveness-v1",
             challengePlan = challengePlan,
+            documentCapturePolicy = requestedDocumentPolicy,
         )
     }
 
@@ -121,6 +127,12 @@ private class FakeSessionBackend(
         assertEquals(EvidenceRole.entries.toList(), evidence.images.map { it.role })
         return VerifyResult(verified = true, verificationId = "vrf_123")
     }
+
+    override suspend fun attachIdentityDocument(
+        subjectId: String,
+        document: IdentityDocument,
+        grant: String?,
+    ): EnrollResult = error("legacy document attachment should not be used by prepared sessions")
 
     override fun close() = Unit
 }
@@ -167,15 +179,18 @@ class ActiveLivenessSessionTest {
         val session = FaceCheck.prepareEnrollment(
             subjectId = "person_demo_01",
             modelProfileId = "arcface-w600k-mbf-r1",
+            documentPolicy = DocumentCapturePolicy.FACE_PLUS_INE,
             location = freshLocation,
         )
 
         assertEquals("enroll", backend.requestedOperation)
         assertEquals("person_demo_01", backend.requestedSubjectId)
         assertEquals("arcface-w600k-mbf-r1", backend.requestedModelProfileId)
+        assertEquals(DocumentCapturePolicy.FACE_PLUS_INE, backend.requestedDocumentPolicy)
         assertEquals(freshLocation, backend.requestedLocation)
         assertEquals(listOf(ServerChallenge.TURN_RIGHT, ServerChallenge.TURN_LEFT), session.challengePlan)
         assertEquals("arcface-w600k-mbf-r1", session.modelProfile.id)
+        assertEquals(DocumentCapturePolicy.FACE_PLUS_INE, session.documentCapturePolicy)
     }
 
     @Test

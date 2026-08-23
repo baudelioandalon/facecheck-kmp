@@ -3,7 +3,9 @@ package com.borealnetwork.facecheck.net
 import com.borealnetwork.facecheck.liveness.CapturedEvidenceBundle
 import com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
@@ -15,6 +17,12 @@ internal interface FaceCheckBackend {
         ine: ByteArray? = null,
         grant: String? = null,
         overwrite: Boolean = false,
+    ): EnrollResult
+
+    suspend fun attachIdentityDocument(
+        subjectId: String,
+        document: IdentityDocument,
+        grant: String? = null,
     ): EnrollResult
 
     suspend fun verify(
@@ -29,6 +37,7 @@ internal interface FaceCheckBackend {
         operation: String,
         subjectId: String,
         requestedModelProfileId: String? = null,
+        requestedDocumentPolicy: DocumentCapturePolicy = DocumentCapturePolicy.FACE_ONLY,
         location: LocationContext,
     ): LivenessSessionDescriptor
 

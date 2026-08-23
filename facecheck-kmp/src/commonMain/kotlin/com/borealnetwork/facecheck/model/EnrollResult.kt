@@ -22,6 +22,13 @@ data class EnrollResult(
     val faceQuality: FaceQuality? = null,
     val ineEnrolled: Boolean = false,
     val ineQuality: FaceQuality? = null,
+    /**
+     * Explicit document lifecycle state for the enrolled subject.
+     *
+     * `ineEnrolled` remains as a backwards-compatible summary flag for older
+     * callers, but new consumers should prefer this field.
+     */
+    val documentStatus: IdentityDocumentStatus = IdentityDocumentStatus.NONE,
     val modelVersion: String? = null,
     /**
      * Telemetry only, and currently always null.

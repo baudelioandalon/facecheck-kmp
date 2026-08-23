@@ -6,9 +6,11 @@ import com.borealnetwork.facecheck.FaceCheckLogger
 import com.borealnetwork.facecheck.FaceCheckLogSink
 import com.borealnetwork.facecheck.SubjectId
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
 import com.borealnetwork.facecheck.model.LocationContext
+import com.borealnetwork.facecheck.model.IdentityDocumentStatus
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.MockRequestHandler
@@ -40,6 +42,8 @@ private const val BASE_URL = "https://facecheck.example.com"
 
 private val SELFIE = "fake-jpeg-selfie".encodeToByteArray()
 private val INE = "fake-jpeg-ine".encodeToByteArray()
+private val INE_FRONT = "fake-jpeg-ine-front".encodeToByteArray()
+private val INE_BACK = "fake-jpeg-ine-back".encodeToByteArray()
 private val FRONT_INITIAL = "front-initial-jpeg".encodeToByteArray()
 private val TURN_FIRST = "turn-first-jpeg".encodeToByteArray()
 private val CENTER_BETWEEN = "center-between-jpeg".encodeToByteArray()
@@ -68,6 +72,7 @@ private const val ENROLL_BODY = """
   },
   "ineEnrolled": false,
   "ineQuality": null,
+  "documentStatus": "none",
   "modelVersion": "w600k_mbf-1"
 }
 """
@@ -155,6 +160,7 @@ class FaceCheckApiTest {
         assertEquals("test_9f86d081", result.subjectId)
         assertFalse(result.overwritten)
         assertEquals(0.398f, result.faceQuality?.faceRatio)
+        assertEquals(IdentityDocumentStatus.NONE, result.documentStatus)
         assertEquals("w600k_mbf-1", result.modelVersion)
         assertNull(result.spoofScore)
     }
@@ -373,8 +379,31 @@ class FaceCheckApiTest {
                 assertContains(body, "name=\"evidence_$index\"")
                 assertContains(body, "filename=\"evidence_$index.jpg\"")
                 assertContains(body, role)
-            }
+        }
         assertFalse(body.contains("filename=\"selfie.jpg\""), "legacy selfie part: $body")
+    }
+
+    @Test
+    fun attach_identity_document_sends_the_front_and_back_parts_separately() = runTest {
+        var body = ""
+        val api = api {
+            body = it.body.readAsText()
+            respondJson("""{"enrolled":true,"subjectId":"test_9f86d081","ineEnrolled":true,"mode":"test"}""")
+        }
+
+        val result = api.attachIdentityDocument(
+            subjectId = "person_demo_01",
+            document = IdentityDocument(front = INE_FRONT, back = INE_BACK),
+        )
+
+        assertTrue(result.ineEnrolled)
+        assertContains(body, "subjectId")
+        assertContains(body, "person_demo_01")
+        assertContains(body, "name=\"ineFront\"")
+        assertContains(body, "name=\"ineBack\"")
+        assertContains(body, INE_FRONT.decodeToString())
+        assertContains(body, INE_BACK.decodeToString())
+        assertFalse(body.contains("name=\"ine\""), "legacy single-file INE part: $body")
     }
 
     // --- Errors ---------------------------------------------------------------

@@ -98,6 +98,7 @@ object FaceCheckLogger {
 /** Operations whose failures may be written to host diagnostics. */
 enum class FaceCheckLogOperation(internal val wire: String) {
     ENROLL("enroll"),
+    INE_ATTACHMENT("ine_attachment"),
     VERIFY("verify"),
     MODEL_PROFILES("model_profiles"),
     LIVENESS_SESSION("liveness_session"),
