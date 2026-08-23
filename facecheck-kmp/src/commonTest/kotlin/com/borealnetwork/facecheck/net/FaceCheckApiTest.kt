@@ -394,11 +394,13 @@ class FaceCheckApiTest {
         val result = api.attachIdentityDocument(
             subjectId = "person_demo_01",
             document = IdentityDocument(front = INE_FRONT, back = INE_BACK),
+            location = FRESH_LOCATION,
         )
 
         assertTrue(result.ineEnrolled)
         assertContains(body, "subjectId")
         assertContains(body, "person_demo_01")
+        assertContains(body, "locationContext")
         assertContains(body, "name=\"ineFront\"")
         assertContains(body, "name=\"ineBack\"")
         assertContains(body, INE_FRONT.decodeToString())

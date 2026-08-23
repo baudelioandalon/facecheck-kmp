@@ -125,12 +125,14 @@ internal class FaceCheckApi(
     override suspend fun attachIdentityDocument(
         subjectId: String,
         document: IdentityDocument,
+        location: LocationContext,
         grant: String?,
     ): EnrollResult {
         requireValidSubjectId(subjectId)
         FaceCheckLogger.info { "operation=ine_attachment request=started" }
         return post(ATTACH_INE_PATH, FaceCheckLogOperation.INE_ATTACHMENT) {
             append("subjectId", subjectId)
+            append("locationContext", json.encodeToString(location))
             if (grant != null) append("grant", grant)
             appendImage("ineFront", document.front, filename = "ineFront.jpg")
             appendImage("ineBack", document.back, filename = "ineBack.jpg")

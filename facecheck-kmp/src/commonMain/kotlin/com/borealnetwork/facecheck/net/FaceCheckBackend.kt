@@ -23,6 +23,7 @@ internal interface FaceCheckBackend {
     suspend fun attachIdentityDocument(
         subjectId: String,
         document: IdentityDocument,
+        location: LocationContext,
         grant: String? = null,
     ): EnrollResult
 

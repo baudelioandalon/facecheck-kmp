@@ -1347,26 +1347,71 @@ class VerifyActivity : ComponentActivity() {
             backCaptureStarted = true
             isUploading = true
             refreshUi()
-            val back = controller.captureStill()
-            backBytes = back.bytes
-            currentScreen = screen.copy(
-                front = checkNotNull(frontBytes),
-                back = backBytes,
-                message = "Reverso capturado. Enviando INE.",
-            )
-            if (automaticUploadStarted || sessionId != activeCaptureId) return
-            automaticUploadStarted = true
-            refreshUi()
-            FaceCheck.attachIdentityDocument(
-                subjectId = screen.subjectId,
-                document = IdentityDocument(
+            try {
+                val back = controller.captureStill()
+                backBytes = back.bytes
+                currentScreen = screen.copy(
                     front = checkNotNull(frontBytes),
-                    back = checkNotNull(backBytes),
-                ),
-            )
-            rememberSubjectIne(screen.subjectId)
-            if (sessionId == activeCaptureId) {
-                renderDocumentComplete(frame, subjectId = screen.subjectId)
+                    back = backBytes,
+                    message = "Reverso capturado. Confirmando ubicación.",
+                )
+                if (automaticUploadStarted || sessionId != activeCaptureId) return
+                automaticUploadStarted = true
+                refreshUi()
+                val location = CurrentLocationProvider(this@VerifyActivity).current()
+                currentScreen = screen.copy(
+                    front = checkNotNull(frontBytes),
+                    back = backBytes,
+                    message = "Reverso capturado. Enviando INE.",
+                )
+                refreshUi()
+                FaceCheck.attachIdentityDocument(
+                    subjectId = screen.subjectId,
+                    document = IdentityDocument(
+                        front = checkNotNull(frontBytes),
+                        back = checkNotNull(backBytes),
+                    ),
+                    location = location,
+                )
+                rememberSubjectIne(screen.subjectId)
+                if (sessionId == activeCaptureId) {
+                    renderDocumentComplete(frame, subjectId = screen.subjectId)
+                }
+            } catch (error: FaceCheckException) {
+                if (sessionId == activeCaptureId) {
+                    backBytes = null
+                    isUploading = false
+                    automaticUploadStarted = false
+                    backCaptureStarted = false
+                    currentScreen = screen.copy(
+                        front = checkNotNull(frontBytes),
+                        back = null,
+                        message = "${error.code}: ${error.message}",
+                        isUploading = false,
+                    )
+                    refreshUi()
+                    status.setTextColor(Color.rgb(255, 188, 184))
+                    status.text = "${error.code}: ${error.message}"
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                if (sessionId == activeCaptureId) {
+                    backBytes = null
+                    isUploading = false
+                    automaticUploadStarted = false
+                    backCaptureStarted = false
+                    val message = CaptureFailurePresentation.fromUnexpected(error)
+                    currentScreen = screen.copy(
+                        front = checkNotNull(frontBytes),
+                        back = null,
+                        message = message,
+                        isUploading = false,
+                    )
+                    refreshUi()
+                    status.setTextColor(Color.rgb(255, 188, 184))
+                    status.text = message
+                }
             }
         }
 

@@ -132,6 +132,7 @@ private class FakeSessionBackend(
     override suspend fun attachIdentityDocument(
         subjectId: String,
         document: IdentityDocument,
+        location: LocationContext,
         grant: String?,
     ): EnrollResult = error("legacy document attachment should not be used by prepared sessions")
 

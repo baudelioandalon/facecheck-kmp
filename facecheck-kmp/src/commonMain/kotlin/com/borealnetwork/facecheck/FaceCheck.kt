@@ -228,13 +228,23 @@ object FaceCheck {
         )
     }
 
+    /**
+     * Attach the front/back INE capture to an already enrolled subject.
+     *
+     * The backend stores an audit trail for document uploads, so callers must
+     * collect a fresh [location] immediately before sending the document. If
+     * location permission is missing or disabled, block before opening the
+     * camera instead of attempting an upload that the server will reject.
+     */
     suspend fun attachIdentityDocument(
         subjectId: String,
         document: IdentityDocument,
+        location: LocationContext,
         grant: String? = null,
     ): EnrollResult = requireApi().attachIdentityDocument(
         subjectId = subjectId,
         document = document,
+        location = location,
         grant = grant,
     )
 
