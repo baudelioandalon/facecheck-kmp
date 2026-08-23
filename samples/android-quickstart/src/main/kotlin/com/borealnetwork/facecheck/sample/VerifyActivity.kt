@@ -381,7 +381,7 @@ class VerifyActivity : ComponentActivity() {
                 })
                 addSpace(column, 6)
                 if (hasIne) {
-                    column.addView(secondaryButton("Borrar INE") {
+                    column.addView(secondaryButton("Quitar INE de este teléfono") {
                         forgetSubjectIne(subjectId)
                         renderVerificationDirectory()
                     })
@@ -391,7 +391,7 @@ class VerifyActivity : ComponentActivity() {
                     })
                 }
                 addSpace(column, 6)
-                column.addView(secondaryButton("Borrar enrolado") {
+                column.addView(secondaryButton("Quitar enrolado de este teléfono") {
                     forgetSubject(subjectId)
                     renderVerificationDirectory()
                 })
