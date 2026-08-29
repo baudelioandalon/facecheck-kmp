@@ -13,7 +13,7 @@ plugins {
 // Both come from gradle.properties, with fallbacks so a clone with a stripped
 // gradle.properties still builds.
 group = (findProperty("GROUP") as String?) ?: "org.borealnetwork"
-version = (findProperty("VERSION_NAME") as String?) ?: "1.1.0"
+version = (findProperty("VERSION_NAME") as String?) ?: "1.1.1"
 
 kotlin {
     // explicitApi() would be the right default for a library other people

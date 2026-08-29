@@ -125,7 +125,7 @@ git):
 ```swift
 .binaryTarget(
     name: "FaceCheckSDK",
-    url: "https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.xcframework.zip",
+    url: "https://tu-cdn.example.com/borealnetwork/facecheck/1.1.1/FaceCheckSDK.xcframework.zip",
     checksum: "<salida de: swift package compute-checksum FaceCheckSDK.xcframework.zip>"
 )
 ```
@@ -144,12 +144,12 @@ un podspec que envuelve el XCFramework ya generado:
 # FaceCheckSDK.podspec
 Pod::Spec.new do |s|
   s.name             = 'FaceCheckSDK'
-  s.version          = '1.1.0'
+  s.version          = '1.1.1'
   s.summary          = 'Verificación facial con prueba de vida.'
   s.homepage         = 'https://tu-dominio.example.com'
   s.license          = { :type => 'Commercial' }
   s.author           = { 'FaceCheck' => 'soporte@tu-dominio.example.com' }
-  s.source           = { :http => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.xcframework.zip' }
+  s.source           = { :http => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.1/FaceCheckSDK.xcframework.zip' }
 
   s.ios.deployment_target = '13.0'
   s.vendored_frameworks   = 'FaceCheckSDK.xcframework'
@@ -166,7 +166,7 @@ En el `Podfile` de la app:
 ```ruby
 target 'MiApp' do
   use_frameworks!
-  pod 'FaceCheckSDK', :podspec => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.podspec'
+  pod 'FaceCheckSDK', :podspec => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.1/FaceCheckSDK.podspec'
 end
 ```
 

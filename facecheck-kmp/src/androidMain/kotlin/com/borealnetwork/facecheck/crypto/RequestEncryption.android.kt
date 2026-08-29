@@ -1,11 +1,11 @@
 package com.borealnetwork.facecheck.crypto
 
+import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.SecureRandom
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.X509EncodedKeySpec
-import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
@@ -62,9 +62,10 @@ private fun pemBytes(pem: String): ByteArray {
         .replace("-----BEGIN PUBLIC KEY-----", "")
         .replace("-----END PUBLIC KEY-----", "")
         .replace(Regex("\\s"), "")
-    return Base64.getDecoder().decode(body)
+    return Base64.decode(body, Base64.DEFAULT)
 }
 
-private fun ByteArray.urlBase64(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(this)
+private fun ByteArray.urlBase64(): String =
+    Base64.encodeToString(this, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
 private fun String.escapeJson(): String = replace("\\", "\\\\").replace("\"", "\\\"")

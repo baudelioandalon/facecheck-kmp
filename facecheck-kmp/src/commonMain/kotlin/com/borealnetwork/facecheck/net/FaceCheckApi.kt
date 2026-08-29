@@ -543,7 +543,7 @@ internal class FaceCheckApi(
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
         const val SDK_PLATFORM = "kmp"
-        const val SDK_VERSION = "1.1.0"
+        const val SDK_VERSION = "1.1.1"
         const val BRANDING_CACHE_TTL_MS = 300_000L
         const val HTTP_SERVER_ERROR = 500
         const val MAX_BACKOFF_MS = 8_000L

@@ -27,7 +27,7 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.compileSdk.get().toInt()
         versionCode = 1
-        versionName = "1.1.0"
+        versionName = "1.1.1"
 
         buildConfigField("String", "FACECHECK_BASE_URL", buildConfigString(localProperty("FACECHECK_BASE_URL")))
         buildConfigField("String", "FACECHECK_API_KEY", buildConfigString(localProperty("FACECHECK_API_KEY")))

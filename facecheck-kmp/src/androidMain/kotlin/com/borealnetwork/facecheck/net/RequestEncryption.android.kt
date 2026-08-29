@@ -1,10 +1,10 @@
 package com.borealnetwork.facecheck.net
 
+import android.util.Base64
 import java.security.KeyFactory
 import java.security.SecureRandom
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.X509EncodedKeySpec
-import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.OAEPParameterSpec
@@ -51,14 +51,15 @@ internal actual object RequestEncryption {
     }
 
     private fun decodePem(pem: String): ByteArray =
-        Base64.getMimeDecoder().decode(
+        Base64.decode(
             pem.lineSequence()
                 .filterNot { it.startsWith("-----") }
                 .joinToString(separator = ""),
+            Base64.DEFAULT,
         )
 
     private fun b64(bytes: ByteArray): String =
-        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
     private const val AES_KEY_BYTES = 32
     private const val IV_BYTES = 12

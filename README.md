@@ -21,7 +21,7 @@ servidor; el dispositivo nunca ve un score ni un umbral. Un `VerifyResult` con
 |---|---|
 | Artefacto | `org.borealnetwork:facecheck-kmp` |
 | Paquete | `com.borealnetwork.facecheck` |
-| Versión | `1.1.0` |
+| Versión | `1.1.1` |
 | Licencia | Apache 2.0 |
 | Android | `minSdk 24`, `compileSdk 36` |
 | iOS | framework estático `FaceCheckSDK` (`iosArm64`, `iosSimulatorArm64`, `iosX64`) |
@@ -40,7 +40,7 @@ En `gradle/libs.versions.toml`:
 
 ```toml
 [versions]
-facecheck = "1.1.0"
+facecheck = "1.1.1"
 
 [libraries]
 facecheck-kmp = { module = "org.borealnetwork:facecheck-kmp", version.ref = "facecheck" }
@@ -57,11 +57,11 @@ dependencies {
 O directo, sin catálogo:
 
 ```kotlin
-implementation("org.borealnetwork:facecheck-kmp:1.1.0")
+implementation("org.borealnetwork:facecheck-kmp:1.1.1")
 ```
 
 Un consumidor de **solo Android** puede depender del variante Android
-publicado, `org.borealnetwork:facecheck-kmp-android:1.1.0`, aunque normalmente
+publicado, `org.borealnetwork:facecheck-kmp-android:1.1.1`, aunque normalmente
 Gradle lo resuelve solo desde la coordenada de arriba.
 
 El SDK arrastra CameraX y el detector facial de ML Kit **empaquetado** (no el de
@@ -400,7 +400,7 @@ Al subir de versión: cambia `VERSION_NAME` en `gradle.properties`, actualiza el
 `CHANGELOG.md`, y **sube la misma versión en
 [`facecheck-android`](https://github.com/baudelioandalon/facecheck-android)**
 después de resincronizar su espejo. Los dos artefactos comparten numeración
-justamente para que `1.1.0` signifique el mismo código en los dos.
+justamente para que `1.1.1` signifique el mismo código en los dos.
 
 ---
 

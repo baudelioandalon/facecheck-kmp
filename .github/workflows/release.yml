@@ -2,8 +2,9 @@ name: Release
 
 # Compila, firma y sube a Maven Central.
 #
-# CUÁNDO PUBLICA: cuando `VERSION_NAME` de gradle.properties todavía no existe
-# en Central. Ese es el disparador real, y no "cada push", porque una versión
+# CUÁNDO PUBLICA: cuando `VERSION_NAME` de gradle.properties no tiene un tag de
+# publicación confirmado ni existe todavía en Central. Ese es el disparador
+# real, y no "cada push", porque una versión
 # publicada en Central es PERMANENTE: no se puede borrar ni reemplazar, y subir
 # 0.1.0 dos veces no sobrescribe nada, falla. Con esta regla el flujo es el que
 # uno espera —subes el cambio con la versión nueva y se publica solo— y un
@@ -29,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
@@ -40,9 +41,9 @@ jobs:
   # -------------------------------------------------------------------------
   # ¿Hay algo que publicar?
   # -------------------------------------------------------------------------
-  # Se le pregunta a Maven Central, no al historial de git. Es la única fuente
-  # que sabe la verdad, y hace el workflow idempotente: repetirlo tras un fallo
-  # de red no intenta republicar lo que ya subió.
+  # El tag post-cierre cubre el retraso del índice y Maven Central confirma el
+  # estado durable. Juntos hacen idempotente el flujo sin bloquear un reintento
+  # cuyo staging haya fallado antes de cerrarse.
   gate:
     name: Revisar la version
     runs-on: ubuntu-latest
@@ -69,6 +70,15 @@ jobs:
           if [[ "${{ inputs.force }}" == "true" ]]; then
             echo "::warning::Se fuerza la publicacion de $version."
             echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # El tag se registra solamente después de que Sonatype acepta el
+          # cierre. Así cubre la ventana de 10-30 minutos en la que Central ya
+          # recibió la versión, pero su POM todavía responde 404 en el índice.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "::notice::$ARTIFACT_ID $version ya tiene un tag de publicación confirmado."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -123,7 +133,7 @@ jobs:
       # Las pruebas ANTES de firmar nada. Publicar es irreversible; correr la
       # suite después de subir no sirve de nada.
       - name: Probar
-        run: ./gradlew test --stacktrace
+        run: ./gradlew check lintDebug --stacktrace
 
       - name: Probar en el simulador de iOS
         run: ./gradlew :facecheck-kmp:iosSimulatorArm64Test --stacktrace
@@ -194,6 +204,21 @@ jobs:
           }
           echo "$respuesta"
 
+      - name: Registrar tag publicado
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::notice::$tag ya existe; no se vuelve a registrar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "$ARTIFACT_ID $VERSION"
+          git push origin "refs/tags/$tag"
+
       - name: Resumen
         run: |
           {
@@ -222,7 +247,7 @@ jobs:
           {
             echo "### Nada que publicar"
             echo
-            echo "\`VERSION_NAME=${{ needs.gate.outputs.version }}\` ya existe en Maven Central, o es un SNAPSHOT."
+            echo "\`VERSION_NAME=${{ needs.gate.outputs.version }}\` ya tiene publicación confirmada, ya existe en Maven Central, o es un SNAPSHOT."
             echo
             echo "Una version de Central es permanente y no se puede reemplazar."
             echo "Para publicar, sube \`VERSION_NAME\` en \`gradle.properties\`."

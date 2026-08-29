@@ -9,6 +9,22 @@ Los cambios incompatibles se anuncian aquí y en las notas del release.
 
 Nada todavía.
 
+## [1.1.1] — 2026-08-29
+
+### Corregido
+
+- El cifrado de solicitudes en Android usa `android.util.Base64`, compatible
+  con el `minSdk 24` declarado, en lugar de APIs de Java disponibles solo desde
+  Android 8 (API 26).
+- El quickstart declara la cámara como hardware opcional para no excluir
+  ChromeOS ni fallar la validación de lint del artefacto de ejemplo.
+
+### Cambiado
+
+- El release ejecuta `check` y `lintDebug` antes de firmar, registra el tag
+  únicamente después del cierre exitoso en Sonatype y usa ese tag para evitar
+  republicaciones durante el retraso del índice de Maven Central.
+
 ## [1.1.0] — 2026-08-29
 
 Versión aditiva que homologa el SDK móvil con los contratos actuales de
@@ -86,7 +102,8 @@ del [README](README.md#limitaciones).
 - Los retos de vida corren en el dispositivo y no son un control de seguridad.
 - La comparación contra la INE (`CompareWith.INE` / `BOTH`) es experimental.
 
-[No publicado]: https://github.com/baudelioandalon/facecheck-kmp/compare/v1.1.0...HEAD
+[No publicado]: https://github.com/baudelioandalon/facecheck-kmp/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v1.1.1
 [1.1.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v1.0.0
 [0.1.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v0.1.0

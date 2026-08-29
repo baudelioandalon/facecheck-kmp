@@ -136,7 +136,7 @@ Su CI lo detecta y se pone en rojo, pero es mejor hacerlo en el momento. Y si tu
 cambio agrega o mueve un `expect`/`actual`, el script fallará a propósito: léelo
 antes de pelearte con él.
 
-Al publicar, los dos repos suben **la misma versión**. Que `1.1.0` signifique el
+Al publicar, los dos repos suben **la misma versión**. Que `1.1.1` signifique el
 mismo código en los dos es todo el punto.
 
 ## Pull requests
