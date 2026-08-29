@@ -19,10 +19,9 @@ data class VerifyChecks(
 /**
  * The `/verify` response body.
  *
- * [similarity] and [ineSimilarity] are server-calculated, normalized values in
- * `0..1` returned after the comparison. They are result data for the host app,
- * not client-side decision inputs. The response never includes tenant
- * thresholds, embeddings, images or storage paths.
+ * [similarity] and [ineSimilarity] are normalized server results in `0..1`.
+ * They are diagnostic result data for the host app, never client-side decision
+ * inputs. Thresholds, embeddings, images and storage paths remain private.
  */
 @Serializable
 data class VerifyResult(
@@ -40,9 +39,17 @@ data class VerifyResult(
     val ineSimilarity: Double? = null,
     val faceQuality: FaceQuality? = null,
     val verificationId: String = "",
+    /** Location where the verification was completed, when the integrator captured it. */
+    val location: OperationLocation? = null,
     /** Telemetry only, currently always null. See [EnrollResult.spoofScore]. */
     val spoofScore: Double? = null,
+    /** Backend-derived company identity; null until the account's first real payment. */
+    val companyId: String? = null,
 ) {
+    init {
+        CompanyIdentity.requireValid(companyId)
+    }
+
     /** The comparison the backend actually ran, which may be stricter than requested. */
     val compareWith: CompareWith
         get() = CompareWith.fromWire(compareWithWire)

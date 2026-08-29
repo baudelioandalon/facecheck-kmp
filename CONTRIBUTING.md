@@ -45,6 +45,7 @@ facecheck-kmp/src/
 ├── androidMain/    CameraX + ML Kit
 └── iosMain/        AVFoundation + Vision
 samples/android-quickstart/    app mínima, se compila en CI
+samples/immersive-ui/           UI canónica de cámara y configuración
 docs/IOS.md                    integración en iOS
 ```
 
@@ -106,6 +107,13 @@ cualquiera de estas cosas se cierra aunque el código esté impecable:
 
 ## Paridad con `facecheck-android`
 
+`libs/facecheck-kmp` es la única fuente de verdad tanto para el SDK como para
+la UI inmersiva. El directorio `sdk/` de este checkout contiene un espejo
+generado: `sdk/facecheck-sdk` y `sdk/immersive-ui` no se editan a mano.
+Después de cualquier cambio en KMP, ejecuta
+`tools/sync-kmp-to-android.sh --source libs/facecheck-kmp --target sdk` y deja
+que `--check` detecte diferencias antes de compilar.
+
 `facecheck-android` es la distribución solo-Android de este mismo SDK y su
 código es una **copia byte por byte** de `commonMain` + `androidMain` +
 `commonTest`, generada por un script.
@@ -119,11 +127,16 @@ tools/sync-from-kmp.sh ../facecheck-kmp
 ./gradlew build
 ```
 
+El ejemplo Android del repo KMP y el demo físico no son dos productos
+distintos: el primero consume directamente `samples/immersive-ui` y el
+segundo consume su espejo generado. Si una pantalla necesita cambiar, cambia
+el módulo KMP y vuelve a sincronizar.
+
 Su CI lo detecta y se pone en rojo, pero es mejor hacerlo en el momento. Y si tu
 cambio agrega o mueve un `expect`/`actual`, el script fallará a propósito: léelo
 antes de pelearte con él.
 
-Al publicar, los dos repos suben **la misma versión**. Que `0.1.0` signifique el
+Al publicar, los dos repos suben **la misma versión**. Que `1.1.0` signifique el
 mismo código en los dos es todo el punto.
 
 ## Pull requests

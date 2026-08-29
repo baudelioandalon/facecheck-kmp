@@ -21,23 +21,26 @@ data class EnrollResult(
     val overwritten: Boolean = false,
     val faceQuality: FaceQuality? = null,
     val ineEnrolled: Boolean = false,
-    /** ISO-8601 timestamp when an identity document was saved for this subject, when applicable. */
+    /** ISO-8601 timestamp when an identity document was saved, when applicable. */
     val ineSavedAt: String? = null,
     val ineQuality: FaceQuality? = null,
-    /**
-     * Explicit document lifecycle state for the enrolled subject.
-     *
-     * `ineEnrolled` remains as a backwards-compatible summary flag for older
-     * callers, but new consumers should prefer this field.
-     */
+    /** Explicit lifecycle state; prefer this over the legacy [ineEnrolled] flag. */
     val documentStatus: IdentityDocumentStatus = IdentityDocumentStatus.NONE,
     val modelVersion: String? = null,
+    /** Location where the enrollment was completed, when the integrator captured it. */
+    val location: OperationLocation? = null,
     /**
      * Telemetry only, and currently always null.
      *
      * The available anti-spoofing model scores ~1.0 ("attack") for every input,
      * live faces included, so the backend records it and never gates on it. Do
-     * not build a decision on this field. See <https://facecheck.borealnetwork.org/docs/umbrales>.
+     * not build a decision on this field. See `docs/MODELOS.md`.
      */
     val spoofScore: Double? = null,
-)
+    /** Backend-derived company identity; null until the account's first real payment. */
+    val companyId: String? = null,
+) {
+    init {
+        CompanyIdentity.requireValid(companyId)
+    }
+}

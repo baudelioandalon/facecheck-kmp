@@ -13,7 +13,7 @@ plugins {
 // Both come from gradle.properties, with fallbacks so a clone with a stripped
 // gradle.properties still builds.
 group = (findProperty("GROUP") as String?) ?: "org.borealnetwork"
-version = (findProperty("VERSION_NAME") as String?) ?: "0.1.0"
+version = (findProperty("VERSION_NAME") as String?) ?: "1.1.0"
 
 kotlin {
     // explicitApi() would be the right default for a library other people
@@ -82,6 +82,7 @@ kotlin {
 
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.androidx.activity.ktx)
 
             // `api`, not `implementation`: AndroidCameraController.attachPreview
             // takes a PreviewView and createCameraController's result is bound to
@@ -138,6 +139,12 @@ android {
 
 // Maven Central exige un javadoc.jar por publicación. Kotlin/Native no genera
 // javadoc, así que se publica uno vacío — es lo que hace todo el ecosistema KMP.
+// Vacio a proposito. Maven Central EXIGE un artefacto -javadoc.jar para aceptar
+// el deployment, pero este es un SDK de Kotlin: quien lo consuma desde Android
+// Studio o IntelliJ obtiene la documentacion del -sources.jar, que si lleva el
+// codigo y sus comentarios. Generar javadoc de verdad pide Dokka; mientras no
+// este, esto es el minimo que Central acepta, y conviene que se lea como una
+// decision y no como una tarea rota.
 val javadocJar by tasks.registering(Jar::class) {
     archiveClassifier.set("javadoc")
 }

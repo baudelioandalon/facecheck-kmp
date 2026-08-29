@@ -4,6 +4,7 @@ import com.borealnetwork.facecheck.liveness.ChallengePlan
 import com.borealnetwork.facecheck.liveness.LivenessConfig
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 
 /** Which universe of data a key reaches: sandbox or production. */
 enum class FaceCheckMode(val wire: String) {
@@ -79,6 +80,9 @@ data class FaceCheckConfig(
 
     /** Diagnostics. Off by default; never prints keys or image bytes. */
     val logLevel: FaceCheckLogLevel = FaceCheckLogLevel.NONE,
+
+    /** Optional color used only by this SDK process; it never writes tenant branding. */
+    val brandingOverride: FaceCheckBrandingOverride? = null,
 ) {
     /**
      * Read off the key prefix, never chosen by the caller.

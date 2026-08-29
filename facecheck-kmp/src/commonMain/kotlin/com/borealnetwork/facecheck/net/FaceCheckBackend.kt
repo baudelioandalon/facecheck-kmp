@@ -3,6 +3,8 @@ package com.borealnetwork.facecheck.net
 import com.borealnetwork.facecheck.liveness.CapturedEvidenceBundle
 import com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.FaceCheckBranding
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.IdentityDocument
@@ -12,6 +14,11 @@ import com.borealnetwork.facecheck.model.ModelProfileCatalog
 import com.borealnetwork.facecheck.model.VerifyResult
 
 internal interface FaceCheckBackend {
+    suspend fun getBranding(
+        refresh: Boolean = false,
+        override: FaceCheckBrandingOverride? = null,
+    ): FaceCheckBranding
+
     suspend fun enroll(
         subjectId: String,
         selfie: ByteArray,

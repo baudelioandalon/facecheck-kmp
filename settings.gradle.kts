@@ -33,3 +33,4 @@ include(":facecheck-kmp")
 // Compile-checked documentation. It is not published, but it *is* built by CI,
 // which is the only way a README example stays true after an API change.
 include(":samples:android-quickstart")
+include(":samples:immersive-ui")

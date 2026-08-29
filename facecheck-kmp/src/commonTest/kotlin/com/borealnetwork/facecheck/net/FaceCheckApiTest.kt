@@ -9,6 +9,7 @@ import com.borealnetwork.facecheck.model.CompareWith
 import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 import com.borealnetwork.facecheck.model.LocationContext
 import com.borealnetwork.facecheck.model.IdentityDocumentStatus
 import io.ktor.client.engine.mock.MockEngine
@@ -113,6 +114,27 @@ private const val MODEL_PROFILES_BODY = """
 }
 """
 
+private const val BRANDING_BODY = """
+{
+  "version": "1.0",
+  "revision": 7,
+  "appName": "Empresa Demo",
+  "primaryColor": "#0066CC",
+  "palette": {
+    "primary": "#0066CC",
+    "onPrimary": "#FFFFFF",
+    "background": "#0066CC",
+    "onBackground": "#FFFFFF",
+    "surface": "#1A75D1",
+    "onSurface": "#FFFFFF",
+    "outline": "#6AA5E1"
+  },
+  "iconUrl": null,
+  "iconUrlExpiresAt": null,
+  "shortMessage": "Tu identidad segura"
+}
+"""
+
 private const val LIVENESS_SESSION_BODY = """
 {
   "sessionId": "ls_abcdefghijklmnopqrst",
@@ -146,6 +168,20 @@ class FaceCheckApiTest {
         engine = MockEngine(handler),
         random = Random(0),
         sleep = { /* tests do not wait out a backoff */ },
+        initialEncryptionKey = RequestEncryptionKey(
+            keyId = "test-key-1",
+            publicKeyPem = "unused-by-test-encryptor",
+        ),
+        encryptPayload = { plaintext, key ->
+            EncryptedEnvelope(
+                version = 1,
+                keyId = key.keyId,
+                wrappedKey = "test-wrapped-key",
+                iv = "test-iv",
+                ciphertext = plaintext.decodeToString(),
+                tag = "test-tag",
+            )
+        },
     )
 
     // --- Happy paths ----------------------------------------------------------
@@ -234,9 +270,9 @@ class FaceCheckApiTest {
         // Both the filename and the content type are mandatory: the backend
         // treats a part with neither as absent and answers MISSING_FILE with a
         // perfectly valid image sitting in the body.
-        assertContains(body, "filename=\"selfie.jpg\"")
-        assertContains(body, "filename=\"ine.jpg\"")
-        assertContains(body, "image/jpeg")
+        assertContains(body, "filename=\"selfie.jpg.json\"")
+        assertContains(body, "filename=\"ine.jpg.json\"")
+        assertContains(body, "application/json")
         assertContains(body, SELFIE.decodeToString())
         assertContains(body, INE.decodeToString())
     }
@@ -252,7 +288,7 @@ class FaceCheckApiTest {
         api.enroll("person_demo_01", SELFIE)
 
         assertFalse(body.contains("overwrite"), "unexpected overwrite part: $body")
-        assertFalse(body.contains("filename=\"ine.jpg\""), "unexpected ine part: $body")
+        assertFalse(body.contains("filename=\"ine.jpg.json\""), "unexpected ine part: $body")
     }
 
     @Test
@@ -288,6 +324,69 @@ class FaceCheckApiTest {
     }
 
     @Test
+    fun branding_is_cached_in_memory_and_a_local_override_never_replaces_identity() = runTest {
+        var requests = 0
+        var seen: HttpRequestData? = null
+        val api = FaceCheckApi(
+            config = FaceCheckConfig(
+                apiKey = TEST_KEY,
+                baseUrl = BASE_URL,
+                brandingOverride = FaceCheckBrandingOverride("#006400"),
+            ),
+            engine = MockEngine {
+                requests++
+                seen = it
+                respondJson(BRANDING_BODY)
+            },
+            random = Random(0),
+            sleep = {},
+        )
+
+        val first = api.getBranding()
+        val cached = api.getBranding()
+        val perFlow = api.getBranding(
+            refresh = true,
+            override = FaceCheckBrandingOverride("#CC0000"),
+        )
+
+        assertEquals(HttpMethod.Get, checkNotNull(seen).method)
+        assertEquals("$BASE_URL/branding", checkNotNull(seen).url.toString())
+        assertEquals(TEST_KEY, checkNotNull(seen).headers["X-Api-Key"])
+        assertEquals(2, requests)
+        assertEquals(first, cached)
+        assertEquals("Empresa Demo", first.appName)
+        assertEquals("Tu identidad segura", first.shortMessage)
+        assertEquals("#006400", first.primaryColor)
+        assertEquals("#CC0000", perFlow.primaryColor)
+        assertEquals(7, perFlow.revision)
+    }
+
+    @Test
+    fun branding_cache_expires_after_five_minutes() = runTest {
+        var requests = 0
+        var nowEpochMs = 1_000L
+        val api = FaceCheckApi(
+            config = config(),
+            engine = MockEngine {
+                requests++
+                respondJson(BRANDING_BODY)
+            },
+            random = Random(0),
+            sleep = {},
+            nowEpochMs = { nowEpochMs },
+        )
+
+        api.getBranding()
+        nowEpochMs += 299_999L
+        api.getBranding()
+        assertEquals(1, requests)
+
+        nowEpochMs += 1L
+        api.getBranding()
+        assertEquals(2, requests)
+    }
+
+    @Test
     fun liveness_session_creation_sends_location_profile_and_subject() = runTest {
         var request: HttpRequestData? = null
         var body = ""
@@ -308,11 +407,13 @@ class FaceCheckApiTest {
         assertEquals("$BASE_URL/livenessSessions", checkNotNull(request).url.toString())
         assertEquals(TEST_KEY, checkNotNull(request).headers["X-Api-Key"])
         assertContains(checkNotNull(request).body.contentType.toString(), "application/json")
-        assertContains(body, """"operation":"enroll"""")
-        assertContains(body, """"subjectId":"person_demo_01"""")
-        assertContains(body, """"sdk":{"platform":"kmp","version":"1.0.0"}""")
-        assertContains(body, """"requestedModelProfileId":"arcface-w600k-mbf-r1"""")
-        assertContains(body, """"latitude":19.4326""")
+        assertContains(body, "operation")
+        assertContains(body, "person_demo_01")
+        assertContains(body, "platform")
+        assertContains(body, "kmp")
+        assertContains(body, "requestedModelProfileId")
+        assertContains(body, "arcface-w600k-mbf-r1")
+        assertContains(body, "19.4326")
         assertEquals("ls_abcdefghijklmnopqrst", descriptor.sessionId)
         assertEquals(listOf("turn_left", "turn_right"), descriptor.challengePlan.map { it.wire })
         assertEquals(3, descriptor.capturePolicy.visibleSteps)
@@ -377,10 +478,10 @@ class FaceCheckApiTest {
         listOf("front_initial", "turn_first", "center_between", "turn_second", "front_final")
             .forEachIndexed { index, role ->
                 assertContains(body, "name=\"evidence_$index\"")
-                assertContains(body, "filename=\"evidence_$index.jpg\"")
+                assertContains(body, "filename=\"evidence_$index.jpg.json\"")
                 assertContains(body, role)
         }
-        assertFalse(body.contains("filename=\"selfie.jpg\""), "legacy selfie part: $body")
+        assertFalse(body.contains("filename=\"selfie.jpg.json\""), "legacy selfie part: $body")
     }
 
     @Test

@@ -125,7 +125,7 @@ git):
 ```swift
 .binaryTarget(
     name: "FaceCheckSDK",
-    url: "https://tu-cdn.example.com/borealnetwork/facecheck/0.1.0/FaceCheckSDK.xcframework.zip",
+    url: "https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.xcframework.zip",
     checksum: "<salida de: swift package compute-checksum FaceCheckSDK.xcframework.zip>"
 )
 ```
@@ -144,12 +144,12 @@ un podspec que envuelve el XCFramework ya generado:
 # FaceCheckSDK.podspec
 Pod::Spec.new do |s|
   s.name             = 'FaceCheckSDK'
-  s.version          = '0.1.0'
+  s.version          = '1.1.0'
   s.summary          = 'Verificación facial con prueba de vida.'
   s.homepage         = 'https://tu-dominio.example.com'
   s.license          = { :type => 'Commercial' }
   s.author           = { 'FaceCheck' => 'soporte@tu-dominio.example.com' }
-  s.source           = { :http => 'https://tu-cdn.example.com/borealnetwork/facecheck/0.1.0/FaceCheckSDK.xcframework.zip' }
+  s.source           = { :http => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.xcframework.zip' }
 
   s.ios.deployment_target = '13.0'
   s.vendored_frameworks   = 'FaceCheckSDK.xcframework'
@@ -166,7 +166,7 @@ En el `Podfile` de la app:
 ```ruby
 target 'MiApp' do
   use_frameworks!
-  pod 'FaceCheckSDK', :podspec => 'https://tu-cdn.example.com/borealnetwork/facecheck/0.1.0/FaceCheckSDK.podspec'
+  pod 'FaceCheckSDK', :podspec => 'https://tu-cdn.example.com/borealnetwork/facecheck/1.1.0/FaceCheckSDK.podspec'
 end
 ```
 
@@ -182,6 +182,8 @@ intenta abrir la sesión de captura — no es un error recuperable.
 ```xml
 <key>NSCameraUsageDescription</key>
 <string>Usamos la cámara para verificar tu identidad con una selfie. La foto se envía de forma segura para comprobar que eres tú y no se comparte con terceros.</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Usamos tu ubicación durante la verificación como una señal adicional de seguridad.</string>
 ```
 
 Alternativas según el tono de tu app:
@@ -205,14 +207,17 @@ Si además dejas elegir la INE desde la galería:
 <string>Te permitimos elegir la foto de tu identificación desde tus fotos.</string>
 ```
 
-El SDK **no** requiere micrófono, ubicación ni la biblioteca de fotos por su
-cuenta. Si tu `Info.plist` los declara, es por otra parte de tu app.
+El SDK requiere una ubicación exacta reciente para crear la sesión de
+verificación. La app host debe declarar `NSLocationWhenInUseUsageDescription`,
+pedir el permiso antes de presentar la cámara e implementar
+`LocationContextProvider`. No requiere micrófono. Si además dejas elegir la INE
+desde la galería, declara también `NSPhotoLibraryUsageDescription`.
 
 ### Cuándo pedir el permiso
 
-`start()` pide el permiso si todavía no se ha preguntado, y si el usuario acepta
-arranca la sesión. Funciona, pero el diálogo aparece encima de una pantalla de
-cámara en negro. Es mejor pedirlo antes, en un momento con contexto:
+Pide cámara y ubicación antes de presentar la pantalla de verificación, y crea
+un `LocationContextProvider` que devuelva una ubicación exacta reciente. Así el
+SDK puede crear la sesión antes de arrancar el flujo de cámara:
 
 ```swift
 AVCaptureDevice.requestAccess(for: .video) { granted in
@@ -234,6 +239,7 @@ final class LivenessViewController: UIViewController {
 
     private var camera: IosCameraController?
     private var machine: ChallengeMachine?
+    private let locationProvider = MyLocationContextProvider()
 
     @IBOutlet private weak var instructionLabel: UILabel!
 
@@ -244,7 +250,7 @@ final class LivenessViewController: UIViewController {
         if !FaceCheck.shared.isInitialized {
             FaceCheck.shared.initialize(config: FaceCheckConfig(
                 apiKey: "lk_test_xxxxxxxxxxxx",
-                baseUrl: "https://tu-deployment.example.com",
+                baseUrl: "https://us-central1-facecheck-mx.cloudfunctions.net",
                 challengeCount: 2,
                 connectTimeoutMs: 15_000,
                 requestTimeoutMs: 60_000,
@@ -309,8 +315,9 @@ final class LivenessViewController: UIViewController {
 
         do {
             let result = try await FaceCheck.shared.verify(
-                email: "persona@ejemplo.com",
+                subjectId: "persona_demo_01",
                 camera: camera,
+                locationProvider: locationProvider,
                 machine: machine,
                 compareWith: .enrollment
             )

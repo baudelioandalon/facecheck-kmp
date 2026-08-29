@@ -8,6 +8,8 @@ import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
 import com.borealnetwork.facecheck.model.FaceCheckException
+import com.borealnetwork.facecheck.model.FaceCheckBranding
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 import com.borealnetwork.facecheck.model.IdentityDocument
 import com.borealnetwork.facecheck.model.IneFrontValidationResult
 import com.borealnetwork.facecheck.model.LocationContext
@@ -48,6 +50,11 @@ private class FakeSessionBackend(
     var requestedLocation: LocationContext? = null
     var enrollCalls = 0
     var verifyCalls = 0
+
+    override suspend fun getBranding(
+        refresh: Boolean,
+        override: FaceCheckBrandingOverride?,
+    ): FaceCheckBranding = error("branding is not used by prepared session tests")
 
     override suspend fun enroll(
         subjectId: String,

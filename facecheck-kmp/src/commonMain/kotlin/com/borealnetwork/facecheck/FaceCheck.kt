@@ -7,6 +7,8 @@ import com.borealnetwork.facecheck.liveness.EnrollmentSession
 import com.borealnetwork.facecheck.liveness.VerificationSession
 import com.borealnetwork.facecheck.liveness.runLivenessSession
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.FaceCheckBranding
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
@@ -129,6 +131,18 @@ object FaceCheck {
 
     suspend fun enrollmentModelProfiles(): ModelProfileCatalog =
         requireApi().getEnrollmentModelProfiles()
+
+    /**
+     * Reads the tenant identity used by FaceCheck UI.
+     *
+     * The canonical response is cached only in memory. [override] wins over the
+     * optional config override for this call and changes only the effective
+     * color palette; it never writes to the tenant or replaces name/icon/message.
+     */
+    suspend fun branding(
+        refresh: Boolean = false,
+        override: FaceCheckBrandingOverride? = null,
+    ): FaceCheckBranding = requireApi().getBranding(refresh, override)
 
     suspend fun prepareEnrollment(
         subjectId: String,

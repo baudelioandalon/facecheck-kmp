@@ -5,13 +5,13 @@ facial [FaceCheck](https://facecheck.borealnetwork.org).
 
 Hace tres cosas, y solo tres:
 
-1. **Prepara una sesión** con el backend, que devuelve el perfil de modelo y el
-   orden de retos que se ejecutará en el teléfono.
-2. **Guía al usuario** con Active Liveness / Anti-Replay v1 hasta capturar cinco
-   evidencias canónicas: `front_initial`, `turn_first`, `center_between`,
-   `turn_second` y `front_final`.
-3. **Sube esas evidencias** al backend de FaceCheck, que valida la sesión,
-   compara la identidad y decide si corresponde a la persona registrada.
+1. **Guía al usuario** con una sesión de retos de vida en pantalla ("gira la
+   cabeza a la izquierda", "mira de frente") hasta conseguir una foto frontal,
+   nítida y bien iluminada.
+2. **Captura esa foto** con la cámara frontal — CameraX + ML Kit en Android,
+   AVFoundation + Vision en iOS.
+3. **La sube** al backend de FaceCheck, que decide si corresponde a la persona
+   registrada.
 
 El SDK **no decide nada**. La comparación, el umbral y el veredicto viven en el
 servidor; el dispositivo nunca ve un score ni un umbral. Un `VerifyResult` con
@@ -21,7 +21,7 @@ servidor; el dispositivo nunca ve un score ni un umbral. Un `VerifyResult` con
 |---|---|
 | Artefacto | `org.borealnetwork:facecheck-kmp` |
 | Paquete | `com.borealnetwork.facecheck` |
-| Versión | `1.0.0` |
+| Versión | `1.1.0` |
 | Licencia | Apache 2.0 |
 | Android | `minSdk 24`, `compileSdk 36` |
 | iOS | framework estático `FaceCheckSDK` (`iosArm64`, `iosSimulatorArm64`, `iosX64`) |
@@ -40,7 +40,7 @@ En `gradle/libs.versions.toml`:
 
 ```toml
 [versions]
-facecheck = "1.0.0"
+facecheck = "1.1.0"
 
 [libraries]
 facecheck-kmp = { module = "org.borealnetwork:facecheck-kmp", version.ref = "facecheck" }
@@ -57,12 +57,12 @@ dependencies {
 O directo, sin catálogo:
 
 ```kotlin
-implementation("org.borealnetwork:facecheck-kmp:1.0.0")
+implementation("org.borealnetwork:facecheck-kmp:1.1.0")
 ```
 
-El artefacto equivalente para un consumidor de **solo Android** es
-`org.borealnetwork:facecheck-kmp-android:1.0.0`, aunque normalmente Gradle lo
-resuelve solo desde la coordenada de arriba.
+Un consumidor de **solo Android** puede depender del variante Android
+publicado, `org.borealnetwork:facecheck-kmp-android:1.1.0`, aunque normalmente
+Gradle lo resuelve solo desde la coordenada de arriba.
 
 El SDK arrastra CameraX y el detector facial de ML Kit **empaquetado** (no el de
 Play Services): no necesita cuenta de Google en el dispositivo ni descarga el
@@ -85,25 +85,37 @@ CocoaPods. El procedimiento completo, incluidos el XCFramework, los permisos de
 
 ## Ejemplo
 
+### Ejemplo inmersivo canónico
+
+La implementación visual completa vive en
+[`samples/immersive-ui`](samples/immersive-ui). La app
+[`samples/android-quickstart`](samples/android-quickstart) es el ejemplo
+canónico que se compila y se prueba en este repositorio: su Activity solo
+carga `local.properties`, inicializa el SDK y monta `ImmersiveSampleRoot`.
+
+El arnés físico `sdk/demo-android` usa la misma UI y el mismo código del SDK,
+sin una segunda implementación de cámara. El contenido bajo `sdk/` es un
+espejo generado para la distribución Android y no debe editarse manualmente.
+Después de cambiar KMP, sincroniza el espejo y compruébalo así:
+
+```bash
+tools/sync-kmp-to-android.sh --source libs/facecheck-kmp --target sdk
+tools/sync-kmp-to-android.sh --source libs/facecheck-kmp --target sdk --check
+```
+
+Para probar localmente, crea `local.properties` en cada raíz de build (no lo
+subas a Git) con `FACECHECK_BASE_URL` y `FACECHECK_API_KEY`. El demo conserva
+esos valores en DataStore solo como respaldo cuando no hay valores de build.
+La web de gestión vive en `https://facecheck.borealnetwork.org`; el SDK debe
+usar la URL de Firebase Functions que expone `/livenessSessions`, `/enroll` y
+`/verify`, porque el portal devuelve HTML y no es el servicio de inferencia.
+El `subjectId` no se configura en `local.properties`: en la pantalla inmersiva
+pulsa **Generar ID aleatorio** para crear un identificador único dentro de la
+aplicación y después continúa a la cámara.
+
 Android, con vistas. La versión completa y compilable está en
 [`samples/android-quickstart`](samples/android-quickstart) — se construye en CI
 justamente para que este fragmento no pueda quedarse mintiendo.
-
-El sample completo muestra un flujo de producto: primero explica y solicita
-cámara, imágenes y ubicación; después separa la selección de la persona de la
-captura. El enrolamiento usa un `ID de persona` editable y puede generar uno
-aleatorio con `SubjectId.generate(apiKey)`. Durante el enrolamiento guía tres
-movimientos (izquierda, derecha y frente), muestra el progreso alrededor del
-rostro y en una barra inferior, y permite hasta tres intentos sin abandonar la
-cámara. Tras los pasos, presenta una pantalla de carga antes de guardar el
-enrolamiento. Para verificar, la pantalla completa de selección contiene
-únicamente IDs enrolados con ese sample en ese dispositivo; no consulta el
-directorio del dueño de la app desde una llave incluida en el APK. Si tu producto
-necesita esa lista, sírvela desde tu backend autenticado.
-
-Antes de abrir la captura, el host debe pedir y recibir en runtime cámara,
-ubicación y acceso a imágenes. Declararlas en el manifest no basta para iniciar
-una sesión.
 
 ```kotlin
 // Una sola vez, al arrancar la app.
@@ -114,48 +126,27 @@ FaceCheck.initialize(
     ),
 )
 
-// Por sesión.
+// Por sesión. La app debe pedir CAMERA y ACCESS_FINE_LOCATION antes de abrir
+// el preview; AndroidLocationContextProvider valida ambos permisos y obtiene
+// la ubicación exacta antes de crear la sesión.
 val camera = AndroidCameraController(host = CameraHost(activity))
 camera.attachPreview(previewView)
+val location = AndroidLocationContextProvider(CameraHost(activity))
+
+// Se construye antes de arrancar para poder pintar la primera instrucción
+// de inmediato, en vez de una pantalla vacía hasta el primer cuadro.
+val machine = FaceCheck.newChallengeMachine()
+lifecycleScope.launch {
+    machine.state.collect { statusView.text = it.instructionEs }
+}
 
 lifecycleScope.launch {
     try {
-        val location = LocationContext(
-            latitude = currentLatitude,
-            longitude = currentLongitude,
-            accuracyMeters = currentAccuracy,
-            capturedAt = Clock.System.now(),
-        )
-
-        val catalog = FaceCheck.enrollmentModelProfiles()
-        val profile = requireNotNull(catalog.defaultProfile)
-
-        val enrollment = FaceCheck.prepareEnrollment(
-            subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
-            modelProfileId = profile.id,
-            location = location,
-        )
-        lifecycleScope.launch {
-            enrollment.state.collect { state ->
-                statusView.text = when (state) {
-                    ActiveLivenessState.Ready -> "Listo"
-                    is ActiveLivenessState.Capturing -> state.presentation.instructionEs
-                    ActiveLivenessState.Uploading -> "Guardando enrolamiento…"
-                    ActiveLivenessState.Processing -> "Procesando…"
-                    ActiveLivenessState.Completed -> "Enrolamiento completado"
-                    is ActiveLivenessState.Failed -> state.error.message
-                    ActiveLivenessState.Cancelled -> "Cancelado"
-                }
-            }
-        }
-        enrollment.run(camera = camera)
-
-        val verification = FaceCheck.prepareVerification(
-            subjectId = "sub_ABCDEFGHIJ_abcdefghijklmnopqrstuv",
-            location = location,
-        )
-        val result = verification.run(
+        val result = FaceCheck.verify(
+            subjectId = "persona_demo_01",
             camera = camera,
+            locationProvider = location,
+            machine = machine,
         )
         statusView.text = if (result.verified) {
             "Verificado"
@@ -174,18 +165,68 @@ Un rostro que simplemente **no coincide** no es una excepción: regresa como
 `VerifyResult(verified = false)` con una razón. `FaceCheckException` es para
 sesiones de vida fallidas, problemas de red y peticiones rechazadas.
 
-Para registrar el rostro de referencia de alguien se usa
-`FaceCheck.prepareEnrollment(...).run(...)`. Con una llave `lk_live_` hace falta
-además un **grant** firmado por tu propio backend al llamar `run(grant = ...)`:
-la llave de API viaja dentro del APK y por lo tanto no prueba nada sobre quién
-está llamando. Ver [Grants de registro](https://facecheck.borealnetwork.org/docs/grants).
+### Compartir un enrolamiento web
 
-Un `subjectId` es un identificador opaco. Para crear uno nuevo, usa
-`SubjectId.generate(apiKey)` una vez y guarda el resultado asociado a la
-cuenta de tu producto; usa ese mismo valor en las verificaciones posteriores.
-El generador produce exactamente `sub_<huella>_<aleatorio>`: 10 caracteres
-Base32 de SHA-256 de la llave y 16 bytes criptográficamente seguros como 22
-caracteres Base64URL sin relleno.
+La app host puede pedir a su backend autenticado un enlace hosted de siete días,
+decodificar el contrato y ofrecer un botón para abrirlo o compartirlo:
+
+```kotlin
+val session = Json.decodeFromString<HostedEnrollmentSession>(backendResponse)
+shareText(session.shareUrl) // Intent.ACTION_SEND o equivalente multiplataforma
+```
+
+El SDK valida que el contrato sea de enrolamiento, HTTPS y esté ligado a su
+token de sesión. No genera la credencial: una llave de propietario nunca debe
+quedar dentro del APK o framework. El enlace es de un solo uso y no debe
+registrarse ni persistirse después de su expiración.
+
+## Identidad visual
+
+La marca canónica se configura en el portal y se lee con la misma API key que
+usa el SDK. Nombre, icono, mensaje, color, paleta y revisión llegan en un
+`FaceCheckBranding` de solo lectura:
+
+```kotlin
+val branding = FaceCheck.branding()
+```
+
+Un host puede sustituir únicamente el color para su instancia:
+
+```kotlin
+val branding = FaceCheck.branding(
+    override = FaceCheckBrandingOverride("#183B66"),
+)
+```
+
+También se puede declarar `brandingOverride` en `FaceCheckConfig`; el override
+de la llamada tiene prioridad. El cambio vive solo en memoria y **no escribe**
+la configuración de la empresa, no reemplaza nombre/icono/mensaje/revisión y
+no altera el resultado biométrico. Usa `FaceCheck.branding(refresh = true)`
+para forzar una lectura nueva; la caché normal caduca a los cinco minutos.
+
+Contrato, límites del icono y reglas de contraste:
+[Identidad visual por aplicación](https://facecheck.borealnetwork.org/docs/branding).
+
+## Identidad de compañía
+
+`EnrollResult`, `VerifyResult` y los contratos hosted exponen `companyId` como
+campo nullable de solo lectura (`String?`). Puede ser null antes del primer pago
+real; la app no lo envía ni lo modifica. El SDK no incluye métodos para listar, eliminar o administrar compañías: esas acciones pertenecen al portal, servicios y CLI autenticados.
+
+Para registrar el rostro de referencia de alguien se usa `FaceCheck.enroll(...)`.
+Con una llave `lk_live_` hace falta además un **grant** firmado por tu propio
+backend: la llave de API viaja dentro del APK y por lo tanto no prueba nada
+sobre quién está llamando. Ver
+[Grants de registro](https://facecheck.borealnetwork.org/docs/grants).
+
+### Cifrado automático de solicitudes
+
+El SDK consulta `GET /encryptionKey` con la API key y obtiene la clave pública
+RSA-2048 del ambiente. No se copia una clave pública ni privada a
+`local.properties`: ahí solo viven la URL y la API key. Cada valor y archivo se
+cifra con AES-256-GCM y la clave de sesión se envuelve con RSA-OAEP-SHA256. Si
+el portal rota el par, el SDK sincroniza la nueva clave y reintenta una vez ante
+`ENCRYPTION_KEY_STALE`.
 
 ---
 
@@ -276,13 +317,14 @@ documental automática.
 
 - **La llave de API no es un secreto.** Va dentro de un APK o un IPA. El backend
   está diseñado sobre esa premisa: reemplazar un registro exige además una
-  selfie que ya coincida con la plantilla guardada. No agregues controles que
-  supongan que la llave es confidencial.
-- **`/verify` devuelve el resultado de comparación.** `VerifyResult` incluye
-  `verificationId`, `similarity` e `ineSimilarity` normalizados de `0..1` cuando
-  la comparación correspondiente corrió. No incluye umbrales del tenant,
-  embeddings, imágenes ni rutas de Storage; trata esos valores como datos de
-  resultado sensibles y deja la decisión final al backend.
+  selfie que ya coincida con la plantilla guardada, y `/verify` no regresa
+  score. No agregues controles que supongan que la llave es confidencial.
+- **`/verify` no devuelve similitud, y no la va a devolver.** Un score junto con
+  su umbral convierte el endpoint en un oráculo de distancia: quien tenga la
+  llave puede optimizar un morph contra ese número hasta llegar a
+  `verified = true` contra una plantilla que nunca vio — y la imagen resultante
+  reconstruye aproximadamente el rostro registrado. Los scores sí quedan en el
+  dashboard del tenant, donde la persona a la que se está sondeando no los lee.
 - **La sesión está fijada en vertical.** Bloquea tu pantalla en portrait.
 - **Los textos para el usuario final están en español** (`instructionEs`,
   `messageEs`, `hintEs`). No hay localización todavía.
@@ -358,7 +400,7 @@ Al subir de versión: cambia `VERSION_NAME` en `gradle.properties`, actualiza el
 `CHANGELOG.md`, y **sube la misma versión en
 [`facecheck-android`](https://github.com/baudelioandalon/facecheck-android)**
 después de resincronizar su espejo. Los dos artefactos comparten numeración
-justamente para que `1.0.0` signifique el mismo código en los dos.
+justamente para que `1.1.0` signifique el mismo código en los dos.
 
 ---
 

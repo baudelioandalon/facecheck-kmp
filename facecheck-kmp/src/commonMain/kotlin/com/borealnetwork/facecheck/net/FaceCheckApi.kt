@@ -10,6 +10,8 @@ import com.borealnetwork.facecheck.liveness.LivenessSessionDescriptor
 import com.borealnetwork.facecheck.liveness.LivenessSessionWire
 import com.borealnetwork.facecheck.liveness.ServerChallenge
 import com.borealnetwork.facecheck.model.CompareWith
+import com.borealnetwork.facecheck.model.FaceCheckBranding
+import com.borealnetwork.facecheck.model.FaceCheckBrandingOverride
 import com.borealnetwork.facecheck.model.DocumentCapturePolicy
 import com.borealnetwork.facecheck.model.EnrollResult
 import com.borealnetwork.facecheck.model.FaceCheckErrorCode
@@ -36,6 +38,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.delay
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -66,9 +69,15 @@ internal class FaceCheckApi(
     engine: HttpClientEngine? = null,
     private val random: Random = Random.Default,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    initialEncryptionKey: RequestEncryptionKey? = null,
+    private val encryptPayload: (ByteArray, RequestEncryptionKey) -> EncryptedEnvelope =
+        RequestEncryption::encrypt,
+    private val nowEpochMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : FaceCheckBackend {
     private val apiKeyFingerprint: String = sha256Hex(config.apiKey.encodeToByteArray()).take(8)
-    private var cachedEncryptionKey: RequestEncryptionKey? = null
+    private var cachedEncryptionKey: RequestEncryptionKey? = initialEncryptionKey
+    private var cachedBranding: FaceCheckBranding? = null
+    private var cachedBrandingAtEpochMs: Long? = null
 
     private val json = Json {
         // A backend that starts returning one more field must not break apps
@@ -173,6 +182,25 @@ internal class FaceCheckApi(
 
     override suspend fun getEnrollmentModelProfiles(): ModelProfileCatalog =
         getJson("modelProfiles?operation=enroll", FaceCheckLogOperation.MODEL_PROFILES)
+
+    override suspend fun getBranding(
+        refresh: Boolean,
+        override: FaceCheckBrandingOverride?,
+    ): FaceCheckBranding {
+        val now = nowEpochMs()
+        val cachedAt = cachedBrandingAtEpochMs
+        val cacheAge = cachedAt?.let { now - it }
+        val freshCached = cachedBranding?.takeIf {
+            !refresh && cacheAge != null && cacheAge in 0 until BRANDING_CACHE_TTL_MS
+        }
+        val canonical = freshCached
+            ?: getJson<FaceCheckBranding>(BRANDING_PATH, FaceCheckLogOperation.BRANDING)
+                .also {
+                    cachedBranding = it
+                    cachedBrandingAtEpochMs = nowEpochMs()
+                }
+        return canonical.withOverride(override ?: config.brandingOverride)
+    }
 
     override suspend fun createLivenessSession(
         operation: String,
@@ -297,7 +325,7 @@ internal class FaceCheckApi(
         val encryptedBody = json.encodeToString(
             EncryptedJsonRequest(
                 keyId = encryptionKey.keyId,
-                encryptedPayload = RequestEncryption.encrypt(body.encodeToByteArray(), encryptionKey),
+                encryptedPayload = encryptPayload(body.encodeToByteArray(), encryptionKey),
             ),
         )
         logRequest(operation, "POST", path)
@@ -392,13 +420,13 @@ internal class FaceCheckApi(
         parts.fields.forEach { field ->
             append(
                 field.name,
-                json.encodeToString(RequestEncryption.encrypt(field.value.encodeToByteArray(), encryptionKey)),
+                json.encodeToString(encryptPayload(field.value.encodeToByteArray(), encryptionKey)),
             )
         }
         parts.files.forEach { file ->
             append(
                 key = file.name,
-                value = json.encodeToString(RequestEncryption.encrypt(file.bytes, encryptionKey)).encodeToByteArray(),
+                value = json.encodeToString(encryptPayload(file.bytes, encryptionKey)).encodeToByteArray(),
                 headers = Headers.build {
                     append(HttpHeaders.ContentType, "application/json")
                     append(HttpHeaders.ContentDisposition, "form-data; name=\"${file.name}\"; filename=\"${file.filename}.json\"")
@@ -510,11 +538,13 @@ internal class FaceCheckApi(
         const val VERIFY_PATH = "verify"
         const val ATTACH_INE_PATH = "attachIne"
         const val VALIDATE_INE_FRONT_PATH = "validateIneFront"
+        const val BRANDING_PATH = "branding"
         const val ENCRYPTION_KEY_PATH = "encryptionKey"
         const val LIVENESS_SESSIONS_PATH = "livenessSessions"
         const val ACTIVE_LIVENESS_PROTOCOL = "active-liveness-v1"
         const val SDK_PLATFORM = "kmp"
-        const val SDK_VERSION = "1.0.0"
+        const val SDK_VERSION = "1.1.0"
+        const val BRANDING_CACHE_TTL_MS = 300_000L
         const val HTTP_SERVER_ERROR = 500
         const val MAX_BACKOFF_MS = 8_000L
     }

@@ -1,15 +1,21 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.composeCompiler)
 }
 
-val localProperties = Properties().also { properties ->
-    val localFile = rootProject.file("local.properties")
-    if (localFile.isFile) localFile.inputStream().use(properties::load)
+import java.util.Properties
+
+private val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) file.inputStream().use(::load)
 }
-val facecheckApiKey = localProperties.getProperty("FACECHECK_API_KEY").orEmpty()
+
+private fun localProperty(name: String): String =
+    localProperties.getProperty(name).orEmpty().trim()
+
+private fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\""
 
 android {
     namespace = "com.borealnetwork.facecheck.sample"
@@ -21,12 +27,15 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.compileSdk.get().toInt()
         versionCode = 1
-        versionName = "0.1.0"
-        buildConfigField("String", "FACECHECK_API_KEY", "\"$facecheckApiKey\"")
-        resValue("string", "app_name", "FaceCheck quickstart")
+        versionName = "1.1.0"
+
+        buildConfigField("String", "FACECHECK_BASE_URL", buildConfigString(localProperty("FACECHECK_BASE_URL")))
+        buildConfigField("String", "FACECHECK_API_KEY", buildConfigString(localProperty("FACECHECK_API_KEY")))
+        buildConfigField("String", "FACECHECK_SUBJECT_ID", buildConfigString(localProperty("FACECHECK_SUBJECT_ID")))
     }
 
     buildFeatures {
+        compose = true
         buildConfig = true
     }
 
@@ -52,9 +61,11 @@ kotlin {
 
 dependencies {
     implementation(project(":facecheck-kmp"))
+    implementation(project(":samples:immersive-ui"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.datetime)
 

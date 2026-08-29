@@ -53,7 +53,7 @@ class FaceCheckException(
  * Wire codes from the backend's `{"error":{"code","message"}}` envelope, plus
  * the codes the SDK raises on its own before a request is ever sent.
  *
- * Keep in sync with the backend's error table, published at <https://facecheck.borealnetwork.org/docs/errores>.
+ * Keep in sync with `docs/SCHEMA.md` and `functions-python/facecheck/http_io.py`.
  * [UNKNOWN] exists so a code added to the backend after an app shipped
  * degrades to a generic message instead of crashing the parse.
  */
@@ -84,24 +84,59 @@ enum class FaceCheckErrorCode(
         "ENCRYPTED_REQUEST_REQUIRED",
         "La solicitud debe enviarse cifrada. Actualiza la configuración del SDK.",
     ),
-    ENCRYPTED_REQUEST_INVALID(
-        "ENCRYPTED_REQUEST_INVALID",
-        "No se pudo descifrar la solicitud. Vuelve a sincronizar la clave pública.",
-    ),
     ENCRYPTION_KEY_STALE(
         "ENCRYPTION_KEY_STALE",
-        "La clave de cifrado ya no está vigente. Sincroniza la clave pública e intenta de nuevo.",
+        "La clave de cifrado cambió. Sincronizando y reintentando.",
         isRetryable = true,
     ),
     ENCRYPTION_KEY_UNAVAILABLE(
         "ENCRYPTION_KEY_UNAVAILABLE",
-        "No hay una clave de cifrado configurada para esta aplicación.",
+        "No se pudo sincronizar la clave de cifrado. Intenta de nuevo.",
         isRetryable = true,
+    ),
+    ENCRYPTED_REQUEST_INVALID(
+        "ENCRYPTED_REQUEST_INVALID",
+        "No se pudo proteger la solicitud. Intenta de nuevo.",
+    ),
+    COMPANY_NOT_ASSIGNED(
+        "COMPANY_NOT_ASSIGNED",
+        "Esta cuenta todavía no tiene una compañía porque aún no registra su primer pago real.",
+    ),
+    COMPANY_NOT_FOUND(
+        "COMPANY_NOT_FOUND",
+        "La compañía autorizada ya no existe o fue eliminada.",
+    ),
+    COMPANY_ACCESS_DENIED(
+        "COMPANY_ACCESS_DENIED",
+        "La cuenta autenticada no tiene acceso a esta compañía.",
+    ),
+    COMPANY_MIGRATION_IN_PROGRESS(
+        "COMPANY_MIGRATION_IN_PROGRESS",
+        "La compañía está en migración. Intenta cuando termine la operación administrativa.",
+    ),
+    COMPANY_SERVICE_ENDED(
+        "COMPANY_SERVICE_ENDED",
+        "El periodo pagado de la compañía terminó. No se pueden iniciar operaciones nuevas.",
+    ),
+    COMPANY_DELETE_NOT_APPROVED(
+        "COMPANY_DELETE_NOT_APPROVED",
+        "La eliminación de la compañía todavía no cuenta con aprobación de superadministrador.",
+    ),
+    COMPANY_DELETING(
+        "COMPANY_DELETING",
+        "La eliminación irreversible de la compañía está en curso.",
+    ),
+    COMPANY_DELETION_FAILED(
+        "COMPANY_DELETION_FAILED",
+        "La eliminación de la compañía se detuvo y requiere intervención operativa.",
     ),
 
     // --- Request shape -------------------------------------------------------
     MISSING_SUBJECT_ID("MISSING_SUBJECT_ID", "Falta el identificador del sujeto."),
     INVALID_SUBJECT_ID("INVALID_SUBJECT_ID", "El identificador del sujeto no tiene un formato válido."),
+    /** Legacy backend codes retained only so older responses can still be decoded. */
+    MISSING_EMAIL("MISSING_EMAIL", "Falta el identificador del sujeto."),
+    INVALID_EMAIL("INVALID_EMAIL", "El identificador del sujeto no tiene un formato válido."),
     MISSING_FILE("MISSING_FILE", "No se envió la imagen requerida. Vuelve a intentarlo."),
     EMPTY_FILE("EMPTY_FILE", "La imagen llegó vacía. Vuelve a tomar la foto."),
     INVALID_IMAGE("INVALID_IMAGE", "No se pudo leer la imagen. Vuelve a tomar la foto."),
@@ -117,6 +152,18 @@ enum class FaceCheckErrorCode(
     ),
     INVALID_FLAG("INVALID_FLAG", "Un parámetro de la petición no es válido."),
     METHOD_NOT_ALLOWED("METHOD_NOT_ALLOWED", "Método HTTP no permitido."),
+    MODEL_PROFILE_NOT_ALLOWED(
+        "MODEL_PROFILE_NOT_ALLOWED",
+        "El modelo solicitado no está permitido para esta aplicación.",
+    ),
+    MODEL_PROFILE_UNAVAILABLE(
+        "MODEL_PROFILE_UNAVAILABLE",
+        "El modelo solicitado no está disponible en el backend.",
+    ),
+    MODEL_PROFILE_MISMATCH(
+        "MODEL_PROFILE_MISMATCH",
+        "El modelo no coincide con la sesión de liveness.",
+    ),
 
     // --- Face pipeline -------------------------------------------------------
     NO_FACE(
@@ -155,7 +202,7 @@ enum class FaceCheckErrorCode(
     ENROLLMENT_GRANT_REQUIRED(
         "ENROLLMENT_GRANT_REQUIRED",
         "Falta el grant de enrolamiento. Tu backend debe firmarlo y pasarlo a " +
-            "enroll(grant = ...). Consulta https://facecheck.borealnetwork.org/docs/grants.",
+            "enroll(grant = ...). Consulta docs/ENROLLMENT_GRANTS.md.",
     ),
     ENROLLMENT_GRANT_INVALID(
         "ENROLLMENT_GRANT_INVALID",
@@ -176,20 +223,7 @@ enum class FaceCheckErrorCode(
         "Esta persona no tiene una identificación registrada.",
     ),
 
-    // --- Active Liveness sessions and model profiles -------------------------
-    MODEL_PROFILE_NOT_ALLOWED(
-        "MODEL_PROFILE_NOT_ALLOWED",
-        "Ese modelo no está permitido para esta aplicación.",
-    ),
-    MODEL_PROFILE_UNAVAILABLE(
-        "MODEL_PROFILE_UNAVAILABLE",
-        "El modelo seleccionado no está disponible en este momento.",
-        isRetryable = true,
-    ),
-    MODEL_PROFILE_MISMATCH(
-        "MODEL_PROFILE_MISMATCH",
-        "La sesión no corresponde al modelo de este registro facial.",
-    ),
+    // --- Active Liveness sessions -------------------------------------------
     LOCATION_REQUIRED(
         "LOCATION_REQUIRED",
         "Se requiere ubicación para iniciar la verificación.",
@@ -219,10 +253,6 @@ enum class FaceCheckErrorCode(
     LIVENESS_SESSION_CONSUMED(
         "LIVENESS_SESSION_CONSUMED",
         "Esta sesión ya fue utilizada. Crea una nueva e intenta de nuevo.",
-    ),
-    LIVENESS_EVIDENCE_INVALID(
-        "LIVENESS_EVIDENCE_INVALID",
-        "No pudimos validar las capturas de vida. Vuelve a intentarlo.",
     ),
     LIVENESS_FACE_CHANGED(
         "LIVENESS_FACE_CHANGED",
@@ -285,9 +315,21 @@ enum class FaceCheckErrorCode(
         "LIVENESS_FAILED",
         "No se pudo completar la prueba de vida. Intenta de nuevo.",
     ),
+    LIVENESS_EVIDENCE_INVALID(
+        "LIVENESS_EVIDENCE_INVALID",
+        "La evidencia de liveness no es válida. Vuelve a intentarlo.",
+    ),
     CAMERA_UNAVAILABLE(
         "CAMERA_UNAVAILABLE",
         "No se pudo usar la cámara. Revisa los permisos de la aplicación.",
+    ),
+    LOCATION_PERMISSION_REQUIRED(
+        "LOCATION_PERMISSION_REQUIRED",
+        "Se necesita permiso de ubicación para continuar con mayor seguridad.",
+    ),
+    LOCATION_UNAVAILABLE(
+        "LOCATION_UNAVAILABLE",
+        "No se pudo obtener tu ubicación actual. Activa la ubicación e intenta de nuevo.",
     ),
     CANCELLED("CANCELLED", "La verificación fue cancelada."),
     UNKNOWN("UNKNOWN", "Ocurrió un error inesperado. Intenta de nuevo."),

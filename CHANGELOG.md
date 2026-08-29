@@ -7,19 +7,32 @@ Los cambios incompatibles se anuncian aquí y en las notas del release.
 
 ## [No publicado]
 
+Nada todavía.
+
+## [1.1.0] — 2026-08-29
+
+Versión aditiva que homologa el SDK móvil con los contratos actuales de
+FaceCheck sin exponer operaciones administrativas en el dispositivo.
+
 ### Agregado
 
-- `FaceCheck.enrollmentModelProfiles()` consulta el catálogo seguro del backend,
-  incluyendo el perfil default y los pesos exactos de artefactos.
-- `FaceCheck.prepareEnrollment(...)` y `FaceCheck.prepareVerification(...)`
-  crean sesiones de Active Liveness server-driven antes de abrir captura.
-- `EnrollmentSession` y `VerificationSession` exponen
-  `StateFlow<ActiveLivenessState>` y ejecutan una sola vez la captura canónica
-  de cinco evidencias.
+- Enrolamiento y verificación con `subjectId`, ubicación y metadatos del
+  dispositivo, además de sesiones alojadas para completar el flujo en web.
+- Captura de INE frente y reverso, consulta de su estado y verificación facial
+  contra el rostro enrolado o contra la INE.
+- Active Liveness server-driven con evidencias canónicas y modelos de error
+  consistentes entre Android e iOS.
+- Branding de compañía de solo lectura para aplicar nombre, icono, mensaje y
+  color primario sin permitir que el SDK sobrescriba la configuración central.
+- Identidad de compañía (`ID_COMPANY`) de solo lectura y cifrado de solicitudes
+  cuando el backend lo requiere.
+
+### Seguridad
+
+- Borrar o bloquear personas, listar la cuenta completa, configurar webhooks y
+  rotar secretos permanecen exclusivamente en servicios, CLI y portal.
 
 ## [1.0.0] — 2026-08-13
-
-Candidato preparado localmente; todavía no fue publicado ni etiquetado.
 
 ### Cambiado
 
@@ -35,18 +48,6 @@ Candidato preparado localmente; todavía no fue publicado ni etiquetado.
   `sub_<huella>_<aleatorio>` (`^sub_[A-Z2-7]{10}_[A-Za-z0-9_-]{22}$`): la
   huella son los primeros 10 caracteres Base32 de SHA-256 de la llave y el
   sufijo son 16 bytes criptográficamente seguros en Base64URL sin relleno.
-
-### Orden de lanzamiento
-
-1. Desplegar Functions TypeScript y Python con el contrato `subjectId`.
-2. Validar `/enroll` y `/verify` en un entorno autorizado con datos sintéticos.
-3. Publicar KMP, Swift, Android y CLI 1.0.0.
-4. Desplegar el portal con la documentación y el directorio compatibles.
-5. Antes de etiquetar y hacer push, inspeccionar de nuevo `git status`, el diff
-   y el historial local frente al remoto; etiquetar y hacer push solo con
-   autorización explícita.
-
-Este orden es una lista de ejecución; este cambio no despliega ni publica nada.
 
 ## [0.1.0] — 2026-08-11
 
@@ -85,6 +86,7 @@ del [README](README.md#limitaciones).
 - Los retos de vida corren en el dispositivo y no son un control de seguridad.
 - La comparación contra la INE (`CompareWith.INE` / `BOTH`) es experimental.
 
-[No publicado]: https://github.com/baudelioandalon/facecheck-kmp/compare/v1.0.0...HEAD
+[No publicado]: https://github.com/baudelioandalon/facecheck-kmp/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v1.0.0
 [0.1.0]: https://github.com/baudelioandalon/facecheck-kmp/releases/tag/v0.1.0

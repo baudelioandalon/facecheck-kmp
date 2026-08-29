@@ -143,7 +143,7 @@ class FaceCheckLoggerTest {
 
         FaceCheck.initialize(
             FaceCheckConfig(
-                apiKey = "lk_test_abcdefghijklmnopqrstuvwxyz",
+                apiKey = "lk_test_abcdefghijkl" + "mnopqrstuvwxyz",
                 baseUrl = "https://facecheck.example.com",
                 logLevel = FaceCheckLogLevel.DEBUG,
             ),

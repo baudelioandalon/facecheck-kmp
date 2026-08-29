@@ -105,15 +105,16 @@ class ImmersiveSampleFlowTest {
     @Test
     fun `local subject documents remember which subject already has INE`() {
         assertEquals(
-            setOf("Person_01"),
+            mapOf("Person_01" to 1_725_000_000_000L),
             LocalSubjectDocuments.remember(
-                existing = listOf("Person_01", "valor no válido"),
+                existing = mapOf("Person_01" to null, "valor no válido" to null),
                 subjectId = " Person_01 ",
+                ineSavedAtMs = 1_725_000_000_000L,
             ),
         )
         assertEquals(
-            emptySet(),
-            LocalSubjectDocuments.forget(existing = listOf("Person_01"), subjectId = "Person_01"),
+            emptyMap(),
+            LocalSubjectDocuments.forget(existing = mapOf("Person_01" to null), subjectId = "Person_01"),
         )
     }
 
